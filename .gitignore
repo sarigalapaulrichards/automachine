@@ -1,0 +1,48 @@
+# Python bytecode and environments
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+dist/
+build/
+
+# Binary packages
+*.apk
+*.aab
+
+# Testing & caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Appium / test execution outputs, dumps, screenshots & logs
+*.xml
+*.png
+*.jpg
+*.jpeg
+screenshots/
+screenshots_*/
+reports/
+scratch/
+*.log
+
+# Test run reports and history backups
+*.html
+test_history*.json
+
+# Backups and temp files
+*.bak
+*.bak_*
+*.swp
+*~
+*.tmp
+
+# IDE / OS specific files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
