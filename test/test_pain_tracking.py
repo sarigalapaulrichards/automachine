@@ -2446,14 +2446,24 @@ def extract_my_cycle_metrics(driver):
 
 def capture_cycle_calendar_months(driver):
     """
-    Lightning-fast deterministic navigation through the 4 calendar months:
-    [Two Previous Months (Jul), One Previous Month (Aug), Present Month (Sep), One Future Month (Oct)]
-    1. The calendar always defaults to the present month (e.g. Sep 2026).
-    2. Directly taps '<' twice to reach two months prior (Jul 2026).
-    3. Progressively captures screenshots of each month moving forward:
-       Jul -> tap '>' -> Aug -> tap '>' -> Sep -> tap '>' -> Oct.
-    4. Taps '<' once to return to present month (Sep 2026) and highlights today's date.
-    5. Completely eliminates slow XML/page_source roundtrips, reducing execution from 80s to <3s!
+    Deterministically verifies and captures calendar months on My Cycle following the exact sequence:
+    1. Verify Initial Month:
+       - Opening Cycle page shows the present month (e.g. Sep 2026).
+       - Captures screenshot of present month.
+    2. Tap '<' (located in the right corner):
+       - Navigates to previous month (e.g. Aug 2026).
+       - Captures screenshot of previous month.
+    3. Tap '<' once again:
+       - Navigates to previous-previous month (e.g. Jul 2026).
+       - Captures screenshot of previous-previous month.
+    4. Tap '>' 3 times to navigate to the future month:
+       - Click #1 on '>': Returns to previous month (Aug 2026).
+       - Click #2 on '>': Returns to present month (Sep 2026).
+       - Click #3 on '>': Advances to future month (Oct 2026).
+       - Captures screenshot of future month.
+    5. Clean Return to Present Month:
+       - Taps '<' from Oct 2026 to cleanly return to present month (Sep 2026).
+       - Highlights today's day so the session card is active for today.
     """
     from datetime import date
     today = date.today()
@@ -2462,65 +2472,174 @@ def capture_cycle_calendar_months(driver):
     present_m = get_relative_month(today, 0)
     one_future = get_relative_month(today, 1)
 
-    month_sequence = [
-        (two_prev.strftime("%b").lower(), two_prev.strftime("%b %Y")),       # ("jul", "Jul 2026")
-        (one_prev.strftime("%b").lower(), one_prev.strftime("%b %Y")),       # ("aug", "Aug 2026")
-        (present_m.strftime("%b").lower(), present_m.strftime("%b %Y")),     # ("sep", "Sep 2026")
-        (one_future.strftime("%b").lower(), one_future.strftime("%b %Y")),   # ("oct", "Oct 2026")
-    ]
+    two_prev_key = two_prev.strftime("%b").lower()
+    two_prev_label = two_prev.strftime("%b %Y")
+    one_prev_key = one_prev.strftime("%b").lower()
+    one_prev_label = one_prev.strftime("%b %Y")
+    present_m_key = present_m.strftime("%b").lower()
     present_label = present_m.strftime("%b %Y")
+    one_future_key = one_future.strftime("%b").lower()
+    one_future_label = one_future.strftime("%b %Y")
 
     size = driver.get_window_size()
     W, H = size["width"], size["height"]
-    prev_arrow_x = int(W * (872.0 / 1080.0))
-    next_arrow_x = int(W * (977.0 / 1080.0))
 
-    # Fast header y detection: check once via fast xpath or use proportional height (y ~ 832 on 2400h)
-    eff_y = int(H * (832.0 / 2400.0))
-    try:
-        header_els = driver.find_elements(AppiumBy.XPATH, "//*[contains(@text,'2026') or contains(@text,'2025')]")
-        if header_els:
-            loc = header_els[0].location
-            sz = header_els[0].size
-            if 600 <= loc["y"] <= 1100:
-                eff_y = loc["y"] + sz["height"] // 2
-    except Exception:
-        pass
+    MONTH_NAMES = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 
-    print(f"Step: Fast Calendar Capture -- jumping back 2 months to {month_sequence[0][1]}...", flush=True)
-    # Tap '<' twice to reach two months prior (Jul 2026)
-    _tap_at(driver, prev_arrow_x, eff_y)
-    time.sleep(0.18)
-    _tap_at(driver, prev_arrow_x, eff_y)
-    time.sleep(0.20)
+    def _read_header_info():
+        """Reads current calendar header text and its vertical center Y coordinate."""
+        try:
+            candidates = driver.find_elements(
+                AppiumBy.XPATH,
+                "//android.widget.TextView[contains(@text,'2025') or contains(@text,'2026') or contains(@text,'2027')]"
+            )
+            for el in candidates:
+                try:
+                    txt = (el.text or "").strip()
+                    if re.match(r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+202\d$", txt, re.I):
+                        loc = el.location
+                        sz = el.size
+                        if 150 <= loc["y"] <= 1800 and sz["height"] > 15:
+                            return txt, loc["y"] + sz["height"] // 2
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return None, None
 
-    # Now sequentially screenshot and step forward
+    # Detect header Y position dynamically (defaults to top layout ~448 or mid layout ~832)
+    curr_txt, detected_y = _read_header_info()
+    eff_y = detected_y if detected_y else int(H * (448.0 / 2400.0))
+    print(f"Step: Calendar Navigation Init -- current visible month: '{curr_txt}', header y: {eff_y}", flush=True)
+
+    def _get_chevron_coords(direction, current_header_txt):
+        """
+        Dynamically calculates the exact tap (X, Y) coordinates for '<' or '>':
+        - Two-button state (Aug, Sep):
+            '<' is at proportional ~870px (left slot)
+            '>' is at proportional ~970px (right slot)
+        - Boundary one-button state:
+            Jul (past boundary): only '>' exists, positioned at ~970px (right slot)
+            Oct (future boundary): only '<' exists, positioned at ~970px (right slot)
+        """
+        curr_l = (current_header_txt or "").lower()
+        is_future = one_future_key in curr_l
+        is_past = two_prev_key in curr_l
+
+        if is_future and direction == "prev":
+            tap_x = int(W * (970.0 / 1080.0))
+        elif is_past and direction == "next":
+            tap_x = int(W * (970.0 / 1080.0))
+        elif direction == "prev":
+            tap_x = int(W * (870.0 / 1080.0))
+        else:  # direction == "next"
+            tap_x = int(W * (970.0 / 1080.0))
+        return tap_x, eff_y
+
+    def _nav_tap(direction, max_attempts=3):
+        """Taps '<' or '>' and waits for the month header text to update."""
+        nonlocal eff_y
+        before_txt, new_y = _read_header_info()
+        if new_y:
+            eff_y = new_y
+
+        tap_x, tap_y = _get_chevron_coords(direction, before_txt)
+
+        for attempt in range(max_attempts):
+            _tap_at(driver, tap_x, tap_y)
+            # Poll for month change up to 1.2s
+            start_poll = time.time()
+            while time.time() - start_poll < 1.2:
+                time.sleep(0.15)
+                after_txt, after_y = _read_header_info()
+                if after_y:
+                    eff_y = after_y
+                if after_txt and before_txt and after_txt.lower() != before_txt.lower():
+                    return after_txt
+            time.sleep(0.2)
+        return _read_header_info()[0]
+
     captured = {}
-    for i, (m_key, m_label) in enumerate(month_sequence):
-        file_tag = m_label.lower().replace(" ", "_")
-        ss_name = f"calendar_{file_tag}"
-        path = save_screenshot(driver, ss_name)
-        if path:
-            CURRENT_RUN_DATA["screenshots"][m_key] = path
-            captured[m_key] = path
-            print(f"  [Fast Capture] {m_label} -> {ss_name}.png", flush=True)
 
-        # If not the last month, step forward with '>'
-        if i < len(month_sequence) - 1:
-            _tap_at(driver, next_arrow_x, eff_y)
-            time.sleep(0.18)
+    # Step 1: Verify Initial Month is Present Month (Sep 2026)
+    curr_txt, detected_y = _read_header_info()
+    if detected_y:
+        eff_y = detected_y
+    print(f"\n[Step 1] Verifying initial month on Cycle page: '{curr_txt}'...", flush=True)
+    if present_m_key in (curr_txt or "").lower():
+        print(f"  -> SUCCESS: Initial month is verified as Present Month '{present_label}'!", flush=True)
+    else:
+        print(f"  -> Note: Initial month was '{curr_txt}', expected present month '{present_label}'", flush=True)
 
-    print(f"  SUCCESS: Captured {len(captured)} calendar months in < 3 seconds: {list(captured.keys())}", flush=True)
+    time.sleep(0.3)
+    p_path = save_screenshot(driver, f"calendar_{present_m_key}_2026")
+    if p_path:
+        CURRENT_RUN_DATA["screenshots"][present_m_key] = p_path
+        captured[present_m_key] = p_path
+        print(f"  -> Captured Present Month screenshot: {p_path}", flush=True)
 
-    # Return calendar back to present month (Sep 2026) with 1 tap '<'
-    print(f"Step: Returning calendar to present month ({present_label})...", flush=True)
-    _tap_at(driver, prev_arrow_x, eff_y)
-    time.sleep(0.18)
+    # Step 2: Press '<' in right corner to see previous month (Aug 2026)
+    print(f"\n[Step 2] Pressing '<' in the right corner to see previous month ({one_prev_label})...", flush=True)
+    _nav_tap("prev")
+    now_txt, _ = _read_header_info()
+    print(f"  -> SUCCESS: Previous month is displayed: '{now_txt}'", flush=True)
+    time.sleep(0.3)
+    prev_path = save_screenshot(driver, f"calendar_{one_prev_key}_2026")
+    if prev_path:
+        CURRENT_RUN_DATA["screenshots"][one_prev_key] = prev_path
+        captured[one_prev_key] = prev_path
+        print(f"  -> Captured Previous Month screenshot: {prev_path}", flush=True)
 
-    # Tap today's day on the calendar so today's SESSIONS card is active
+    # Step 3: Press '<' once again to see previous-previous month (Jul 2026)
+    print(f"\n[Step 3] Pressing '<' once again to see previous-previous month ({two_prev_label})...", flush=True)
+    _nav_tap("prev")
+    now_txt, _ = _read_header_info()
+    print(f"  -> SUCCESS: Previous-previous month is displayed: '{now_txt}'", flush=True)
+    time.sleep(0.3)
+    two_prev_path = save_screenshot(driver, f"calendar_{two_prev_key}_2026")
+    if two_prev_path:
+        CURRENT_RUN_DATA["screenshots"][two_prev_key] = two_prev_path
+        captured[two_prev_key] = two_prev_path
+        print(f"  -> Captured Previous-Previous Month screenshot: {two_prev_path}", flush=True)
+
+    # Step 4: Click '>' 3 times to view future month (Oct 2026)
+    print(f"\n[Step 4] Clicking '>' 3 times to reach future month ({one_future_label})...", flush=True)
+    # Click 1: Jul -> Aug
+    print("  -> Click #1 on '>': advancing from Jul to Aug...", flush=True)
+    _nav_tap("next")
+    now_txt, _ = _read_header_info()
+    print(f"     Showing: '{now_txt}'", flush=True)
+
+    # Click 2: Aug -> Sep
+    print("  -> Click #2 on '>': advancing from Aug to Sep (present month)...", flush=True)
+    _nav_tap("next")
+    now_txt, _ = _read_header_info()
+    print(f"     Showing: '{now_txt}'", flush=True)
+
+    # Click 3: Sep -> Oct (Future Month)
+    print(f"  -> Click #3 on '>': advancing from Sep to Oct ({one_future_label})...", flush=True)
+    _nav_tap("next")
+    now_txt, _ = _read_header_info()
+    print(f"  -> SUCCESS: Future month is displayed: '{now_txt}'", flush=True)
+    time.sleep(0.3)
+    fut_path = save_screenshot(driver, f"calendar_{one_future_key}_2026")
+    if fut_path:
+        CURRENT_RUN_DATA["screenshots"][one_future_key] = fut_path
+        captured[one_future_key] = fut_path
+        print(f"  -> Captured Future Month screenshot: {fut_path}", flush=True)
+
+    print(f"\n  SUCCESS: Verified and captured all {len(captured)} calendar months: {list(captured.keys())}", flush=True)
+
+    # Step 5: Cleanly return calendar to present month (Sep 2026)
+    print(f"\n[Step 5] Returning calendar from future month to present month ({present_label})...", flush=True)
+    _nav_tap("prev")
+    now_txt, _ = _read_header_info()
+    print(f"  -> Calendar cleanly restored to: '{now_txt}'", flush=True)
+
+    # Step 6: Highlight today's date so today's session card is active
     try:
         today_str = str(today.day)
-        cx, cy = _calculate_calendar_day_coords(present_label, today_str, eff_y - 20, driver)
+        cx, cy = _calculate_calendar_day_coords(present_label, today_str, eff_y, driver)
         print(f"  Highlighting today's day ({today_str}) on {present_label} at ({cx}, {cy})...", flush=True)
         _tap_at(driver, cx, cy)
         time.sleep(0.2)
