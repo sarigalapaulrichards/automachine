@@ -57,6 +57,7 @@ if WORKSPACE_DIR not in sys.path:
 
 import random
 import re
+import subprocess
 import time
 
 import pytest
