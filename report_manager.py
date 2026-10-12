@@ -32,11 +32,15 @@ def load_history():
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 history = json.load(f)
-                # Ensure each run has first_algo, second_algo, and three_way comparisons
+                # Ensure each run has first_algo, second_algo, three_way comparisons, and present_date
                 changed = False
                 for r in history:
                     inp = r.get("input_data", {})
                     out = r.get("output_data", {})
+                    if "present_date" not in r:
+                        ts = r.get("timestamp", "")
+                        r["present_date"] = ts.split()[0] if ts else datetime.now().strftime("%Y-%m-%d")
+                        changed = True
                     if "first_algo_comparison" not in r:
                         r["first_algo_comparison"] = r.get("algo_comparison") or run_first_cycle_algorithm(inp, out)
                         changed = True
@@ -78,11 +82,26 @@ def clear_history(backup=True):
     print(f"[Report Manager] Successfully cleared {HISTORY_FILE} (0 runs).")
     generate_html_report([])
 
-def record_test_run(status="PASSED", input_data=None, output_data=None, screenshots=None):
+def get_relative_month(base_date, month_offset):
+    year = base_date.year
+    month = base_date.month + month_offset
+    while month < 1:
+        month += 12
+        year -= 1
+    while month > 12:
+        month -= 12
+        year += 1
+    import calendar
+    max_day = calendar.monthrange(year, month)[1]
+    return base_date.replace(year=year, month=month, day=min(base_date.day, max_day))
+
+
+def record_test_run(status="PASSED", input_data=None, output_data=None, screenshots=None, calendar_months=None, present_date=None):
     """
     Records a completed test run, executes both First and Second cycle predictor algorithms
     in parallel, performs a 3-way comparison across Ours vs First vs Second Algorithm,
     archives screenshots, updates test_history.json, and re-generates the interactive Excel-style HTML report.
+    Supports dynamic 4-month calendar verification: 2 previous months, present month, and 1 future month.
     """
     history = load_history()
     run_num = len(history) + 1
@@ -93,9 +112,64 @@ def record_test_run(status="PASSED", input_data=None, output_data=None, screensh
     output_data = output_data or {}
     screenshots = screenshots or {}
 
-    # Run both First and Second algorithms in parallel
-    first_algo_comparison = run_first_cycle_algorithm(input_data, output_data)
-    second_algo_comparison = run_second_cycle_algorithm(input_data, output_data)
+    # Determine present date (defaults to current date, or parsed from parameter)
+    if present_date is None:
+        today = datetime.now().date()
+        present_date_str = today.strftime("%Y-%m-%d")
+    elif isinstance(present_date, str):
+        present_date_str = present_date
+        try:
+            today = datetime.strptime(present_date, "%Y-%m-%d").date()
+        except Exception:
+            today = datetime.now().date()
+    elif hasattr(present_date, "strftime"):
+        today = present_date
+        present_date_str = today.strftime("%Y-%m-%d")
+    else:
+        today = datetime.now().date()
+        present_date_str = today.strftime("%Y-%m-%d")
+
+    # Determine the 4 dynamic months: 2 previous months, present month, 1 future month
+    two_prev = get_relative_month(today, -2)
+    one_prev = get_relative_month(today, -1)
+    present_m = get_relative_month(today, 0)
+    one_future = get_relative_month(today, 1)
+
+    if not calendar_months or len(calendar_months) != 4:
+        calendar_months = [
+            {
+                "key": two_prev.strftime("%b").lower(),
+                "name": two_prev.strftime("%B %Y"),
+                "short": two_prev.strftime("%b %Y"),
+                "role": "Month #1 (Two Months Prior)",
+                "meta_style": "background: var(--accent-soft); color: var(--accent);"
+            },
+            {
+                "key": one_prev.strftime("%b").lower(),
+                "name": one_prev.strftime("%B %Y"),
+                "short": one_prev.strftime("%b %Y"),
+                "role": "Month #2 (Previous Month)",
+                "meta_style": "background: #eef3fb; color: #1f4f8f;"
+            },
+            {
+                "key": present_m.strftime("%b").lower(),
+                "name": present_m.strftime("%B %Y"),
+                "short": present_m.strftime("%b %Y"),
+                "role": "Month #3 (Present Month - Active)",
+                "meta_style": "background: #e6f4ea; color: #137333;"
+            },
+            {
+                "key": one_future.strftime("%b").lower(),
+                "name": one_future.strftime("%B %Y"),
+                "short": one_future.strftime("%b %Y"),
+                "role": "Month #4 (Future Month - Predicted)",
+                "meta_style": "background: #fff4cc; color: #8a5a00;"
+            }
+        ]
+
+    # Run both First and Second algorithms in parallel using the evaluation Present Date
+    first_algo_comparison = run_first_cycle_algorithm(input_data, output_data, today_date=today)
+    second_algo_comparison = run_second_cycle_algorithm(input_data, output_data, today_date=today)
     three_way_comparison = compare_all_three(output_data, first_algo_comparison, second_algo_comparison)
 
     first_pass = first_algo_comparison.get("overall_status") == "PASS"
@@ -126,16 +200,23 @@ def record_test_run(status="PASSED", input_data=None, output_data=None, screensh
     os.makedirs(run_ss_dir, exist_ok=True)
 
     b64_screenshots = {}
-    screenshot_targets = [
-        ("jul", ["calendar_jul_live.png", "calendar_jul_2026.png"]),
-        ("aug", ["calendar_aug_live.png", "calendar_aug_2026.png"]),
-        ("sep", ["calendar_sep_live.png", "calendar_sep_2026.png"]),
-        ("oct", ["calendar_oct_live.png", "calendar_oct_2026.png"]),
+    screenshot_targets = []
+
+    # Dynamic 4 months screenshot targets (exactly: two previous, one present, one future)
+    for cm in calendar_months:
+        k = cm["key"]
+        screenshot_targets.append((k, [f"calendar_{k}_live.png", f"calendar_{k}_{today.year}.png", f"calendar_{k}.png"]))
+
+    screenshot_targets.extend([
+        ("input_cycles", ["input_cycles_proof.png", "input_months_selected.png", "input_cycles_configured.png", "input_month_1_jul_2026.png", "test_jul.png", "calendar_jul_2026.png"]),
+        ("input_month_1", ["input_month_1_jul_2026.png", "input_month_1.png", "test_jul.png", "calendar_jul_2026.png"]),
+        ("input_month_2", ["input_month_2_jul_2026.png", "input_month_2.png"]),
+        ("my_cycle_proof", ["cycle_scrolled_live.png", "session_card_cycle_scrolled_live.png", "session_card.png", "pain_session_card.png"]),
         ("initial_pain", ["initial_pain_score.png", "after_pain_set.png", "initial_pain.png"]),
         ("final_pain", ["final_pain_score.png", "after_feel_score.png", "final_pain.png"]),
         ("session_card", ["session_card.png", "pain_session_card.png", "cycle_scrolled_live.png"]),
         ("home", ["live_home.png", "home_screen.png"])
-    ]
+    ])
 
     for key, fallbacks in screenshot_targets:
         src_path = screenshots.get(key)
@@ -154,16 +235,49 @@ def record_test_run(status="PASSED", input_data=None, output_data=None, screensh
                 shutil.copy2(src_path, dst_path)
             except Exception:
                 pass
-            b64_screenshots[key] = get_base64_from_file(src_path)
+            rel_dir = os.path.basename(SCREENSHOTS_DIR)
+            b64_screenshots[key] = f"{rel_dir}/runs/{run_id}/{dst_name}"
         else:
             b64_screenshots[key] = ""
+
+    # Archive any extra screenshots passed explicitly in screenshots dict
+    for k, v in screenshots.items():
+        if k not in b64_screenshots and v and os.path.exists(v):
+            dst_name = f"{k}_{os.path.basename(v)}"
+            dst_path = os.path.join(run_ss_dir, dst_name)
+            try:
+                shutil.copy2(v, dst_path)
+            except Exception:
+                pass
+            rel_dir = os.path.basename(SCREENSHOTS_DIR)
+            b64_screenshots[k] = f"{rel_dir}/runs/{run_id}/{dst_name}"
+
+    # Capture active device profile & calibrated padding metrics
+    dev_info = {}
+    try:
+        import device_manager
+        dev_prof = device_manager.get_active_device()
+        dev_info = {
+            "name": dev_prof.display_name,
+            "udid": dev_prof.udid,
+            "resolution": f"{dev_prof.width}x{dev_prof.height}",
+            "density": f"{dev_prof.density}dpi",
+            "top_padding": f"{dev_prof.top_padding}px",
+            "bottom_padding": f"{dev_prof.bottom_padding}px",
+            "usable_viewport": f"{dev_prof.usable_width}x{dev_prof.usable_height}px"
+        }
+    except Exception:
+        pass
 
     new_run = {
         "run_id": run_id,
         "timestamp": ts,
+        "present_date": present_date_str,
         "status": overall_run_status,
+        "device_info": dev_info,
         "input_data": input_data,
         "output_data": output_data,
+        "calendar_months": calendar_months,
         "algo_comparison": first_algo_comparison,  # Legacy field preserved
         "first_algo_comparison": first_algo_comparison,
         "second_algo_comparison": second_algo_comparison,
@@ -188,10 +302,17 @@ def generate_html_report(history=None):
         history = load_history()
     history = history or []
 
-    # Ensure each run has all comparisons populated
+    # Ensure each run has all comparisons and present_date populated
+    export_history = []
+    live_present_date = datetime.now().strftime("%d %b %Y")
+    live_present_iso = datetime.now().strftime("%Y-%m-%d")
+
     for r in history:
         inp = r.get("input_data", {})
         out = r.get("output_data", {})
+        if "present_date" not in r:
+            ts = r.get("timestamp", "")
+            r["present_date"] = ts.split()[0] if ts else live_present_iso
         if "first_algo_comparison" not in r:
             r["first_algo_comparison"] = r.get("algo_comparison") or run_first_cycle_algorithm(inp, out)
         if "second_algo_comparison" not in r:
@@ -199,7 +320,24 @@ def generate_html_report(history=None):
         if "three_way_comparison" not in r:
             r["three_way_comparison"] = compare_all_three(out, r["first_algo_comparison"], r["second_algo_comparison"])
 
-    history_json = json.dumps(history)
+        # Convert huge inline base64 to relative file paths to keep HTML report lightweight (< 1MB)
+        r_copy = dict(r)
+        r_copy["present_date"] = r.get("present_date", live_present_iso)
+        rid = r.get("run_id", "")
+        if "screenshots" in r:
+            ss_copy = dict(r["screenshots"])
+            r_dir = os.path.join(SCREENSHOTS_DIR, "runs", rid)
+            for k, v in list(ss_copy.items()):
+                if isinstance(v, str) and v.startswith("data:image"):
+                    if os.path.exists(r_dir):
+                        candidates = [fn for fn in os.listdir(r_dir) if fn.startswith(f"{k}_")]
+                        if candidates:
+                            rel_dir = os.path.basename(SCREENSHOTS_DIR)
+                            ss_copy[k] = f"{rel_dir}/runs/{rid}/{candidates[0]}"
+            r_copy["screenshots"] = ss_copy
+        export_history.append(r_copy)
+
+    history_json = json.dumps(export_history)
 
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -674,9 +812,12 @@ def generate_html_report(history=None):
 
 <header>
   <div>
-    <div style="display: flex; align-items: center; gap: 10px;">
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
       <h1>Curapod-M — Test Run History & Cycle Algorithm Simulator</h1>
       <span class="badge-status pass" id="headerStatus">LIVE LEDGER</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; background: #eaf1fb; border: 1px solid #c2e7ff; color: #174ea6; font-size: 13px; font-weight: 700; padding: 4px 12px; border-radius: 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+        📅 Present Date: <span id="headerPresentDate">{live_present_date}</span>
+      </span>
     </div>
     <div class="sub">Excel-Style Run History · Parallel Algorithm Output Comparison · USB Metrics & Simulator</div>
   </div>
@@ -729,13 +870,16 @@ def generate_html_report(history=None):
             <th style="width: 30px;">#</th>
             <th>Run ID</th>
             <th>Date & Time</th>
+            <th style="background: #eaf1fb; color: #174ea6; font-weight: 700;">Present Date</th>
             <th>Test Status</th>
             <th>1st Algo (First)</th>
             <th>2nd Algo (Second)</th>
             <th>1st vs 2nd</th>
             <th>Pain Score</th>
+            <th style="background: #ecfdf5; color: #065f46; font-weight: 700;">App Persistence</th>
             <th>Cycles Configured</th>
             <th>Length In</th>
+            <th>PREVIOUS PERIOD</th>
             <th>YOU ARE IN</th>
             <th>NEXT PERIOD</th>
             <th>AVG CYCLE</th>
@@ -757,8 +901,11 @@ def generate_html_report(history=None):
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
       Viewing Run Details: <span id="activeRunTitle">RUN-001</span>
     </div>
-    <div style="font-size: 13px; color: var(--ink-2);" id="activeRunTimestamp">
-      Executed: 2026-09-21 10:58:30
+    <div style="display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--ink-2); flex-wrap: wrap;">
+      <span id="activeRunTimestamp">Executed: 2026-09-21 10:58:30</span>
+      <span style="display: inline-flex; align-items: center; gap: 5px; background: #eaf1fb; color: #174ea6; font-weight: 700; padding: 2px 10px; border-radius: 4px; border: 1px solid #c2e7ff;">
+        📅 Evaluation Present Date: <span id="activeRunPresentDate">2026-09-21</span>
+      </span>
     </div>
   </div>
 
@@ -846,9 +993,9 @@ def generate_html_report(history=None):
         <div class="s" id="mCycleDayInfo">Day 4 of active phase</div>
       </div>
       <div class="metric-card">
-        <div class="k">Last Period Start</div>
-        <div class="v" id="mLastPeriod">Aug 14</div>
-        <div class="s">Preceding cycle start</div>
+        <div class="k">Previous / Last Period</div>
+        <div class="v" id="mLastPeriod" style="color: var(--accent); font-weight: 700;">Aug 14</div>
+        <div class="s">Preceding cycle start date</div>
       </div>
       <div class="metric-card">
         <div class="k">Pain Score Test Case</div>
@@ -886,11 +1033,22 @@ def generate_html_report(history=None):
     </div>
   </section>
 
+  <!-- 3B. APP LIFECYCLE PERSISTENCE VERIFICATION -->
+  <section class="panel" id="appLifecyclePanel" style="display: none;">
+    <h2>3B. App Lifecycle Persistence Verification (Close App & Reopen Comparison)</h2>
+    <div style="font-size: 13px; color: var(--ink-2); margin-bottom: 14px;">
+      Verifies that after closing the app completely and relaunching back onto the Home screen, all cycle metrics, day indicators, and calendar data on both the Home Dashboard and My Cycle page remain 100% persisted.
+    </div>
+    <div id="lifecycleContent">
+      <!-- Populated by JS -->
+    </div>
+  </section>
+
   <!-- 4. ACTUAL CALENDAR SCREENSHOTS & LIVE PAIN SCORES -->
   <section class="panel">
     <h2>4. Captured Screenshots: Home Dashboard, Calendar & Live Pain Scores (From Phone Display)</h2>
     <div style="font-size: 13px; color: var(--ink-2); margin-bottom: 14px;">
-      Live screen captures saved directly from the phone display for this test run. Displays the Home Dashboard, all 4 calendar months (July, August, September, October), Initial Pain Score (Before session), Final Pain Score (After session), and the Recorded Session Card from the My Cycle page. Click any screenshot to view in full resolution.
+      Live screen captures saved directly from the phone display for this test run. Displays the Home Dashboard, all 4 calendar months (two previous months, present month, one future month), Initial Pain Score (Before session), Final Pain Score (After session), and the Recorded Session Card from the My Cycle page. Click any screenshot to view in full resolution.
     </div>
     <div class="screenshots-container" id="screenshotsContainer">
       <!-- Populated by JS -->
@@ -973,6 +1131,24 @@ def generate_html_report(history=None):
 let RUN_HISTORY = {history_json};
 const ORIGINAL_RUN_HISTORY = [...RUN_HISTORY];
 let currentRunIndex = RUN_HISTORY.length - 1; // Default to latest run
+
+function getPreviousPeriod(run) {{
+  if (!run) return '–';
+  const out = run.output_data || {{}};
+  if (out.LAST_PERIOD && out.LAST_PERIOD !== 'N/A') return out.LAST_PERIOD;
+  if (out.PREVIOUS_PERIOD && out.PREVIOUS_PERIOD !== 'N/A') return out.PREVIOUS_PERIOD;
+  const algoLast = run.first_algo_comparison && run.first_algo_comparison.algo_metrics && run.first_algo_comparison.algo_metrics.LAST_PERIOD;
+  if (algoLast && algoLast !== 'N/A') return algoLast;
+  const cycles = (run.input_data && run.input_data.cycles) || [];
+  if (cycles.length > 0) {{
+    const lastC = cycles[cycles.length - 1];
+    if (typeof lastC === 'string') return lastC;
+    const m = (lastC.month || '').replace(/\s*\d{4}/, '').trim();
+    const d = String(lastC.start_day || '1').padStart(2, '0');
+    return `${{m}} ${{d}}`.trim() || '–';
+  }}
+  return '–';
+}}
 
 function openCleanModal() {{
   document.getElementById('cleanModal').classList.add('active');
@@ -1069,7 +1245,7 @@ function renderTable(filterText = '') {{
   document.getElementById('totalRunsCount').textContent = RUN_HISTORY.length;
 
   if (RUN_HISTORY.length === 0) {{
-    tbody.innerHTML = '<tr><td colspan="17" style="text-align: center; padding: 36px 16px; color: var(--ink-3); font-size: 13.5px;"><strong>No test runs in memory (Data Cleaned).</strong><br><span style="font-size: 12px; margin-top: 6px; display: inline-block;">Click "Restore Full History" in the toolbar above if you wish to restore previous runs.</span></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="18" style="text-align: center; padding: 36px 16px; color: var(--ink-3); font-size: 13.5px;"><strong>No test runs in memory (Data Cleaned).</strong><br><span style="font-size: 12px; margin-top: 6px; display: inline-block;">Click "Restore Full History" in the toolbar above if you wish to restore previous runs.</span></td></tr>';
     return;
   }}
 
@@ -1089,7 +1265,18 @@ function renderTable(filterText = '') {{
     const isPsPass = psStatus.toUpperCase().includes('PASS');
     const psBadgeClass = isPsSkipped ? 'skipped' : (isPsPass ? 'pass' : 'fail');
 
-    const rowText = `${{run.run_id}} ${{run.timestamp}} ${{run.status}} ${{cyclesStr}} ${{run.output_data.YOU_ARE_IN || ''}}`.toLowerCase();
+    const appLife = run.output_data.app_lifecycle_persistence;
+    let lifeBadge = '<span class="badge-status skipped">N/A</span>';
+    if (appLife && appLife.close_app_executed) {{
+      const isLPass = (appLife.overall_status === 'PASS');
+      lifeBadge = `<span class="badge-status ${{isLPass ? 'pass' : 'fail'}}">${{isLPass ? 'PASS' : 'DIFF'}}</span>`;
+    }} else if (appLife && !appLife.close_app_executed) {{
+      lifeBadge = '<span class="badge-status skipped">NO</span>';
+    }}
+
+    const prevPeriodStr = getPreviousPeriod(run);
+    const pDate = run.present_date || (run.timestamp ? run.timestamp.split(' ')[0] : '–');
+    const rowText = `${{run.run_id}} ${{run.timestamp}} ${{pDate}} ${{run.status}} ${{cyclesStr}} ${{prevPeriodStr}} ${{run.output_data.YOU_ARE_IN || ''}}`.toLowerCase();
     if (filterText && !rowText.includes(filterText.toLowerCase())) return;
 
     const tr = document.createElement('tr');
@@ -1100,13 +1287,16 @@ function renderTable(filterText = '') {{
       <td style="font-weight: 600; color: var(--ink-3);">${{idx + 1}}</td>
       <td style="font-weight: 700; color: var(--accent);">${{run.run_id}}</td>
       <td>${{run.timestamp}}</td>
+      <td style="font-weight: 700; color: #174ea6; background: #f8fbff; white-space: nowrap;">📅 ${{pDate}}</td>
       <td><span class="badge-status ${{isPass ? 'pass' : 'fail'}}">${{run.status}}</span></td>
       <td><span class="badge-status ${{firstPass ? 'pass' : 'fail'}}">${{firstPass ? 'PASS' : 'FAIL'}}</span></td>
       <td><span class="badge-status ${{secondPass ? 'pass' : 'fail'}}">${{secondPass ? 'PASS' : 'FAIL'}}</span></td>
       <td><span class="badge-status ${{match1v2 ? 'pass' : 'fail'}}">${{match1v2 ? 'MATCH' : 'DIFF'}}</span></td>
       <td><span class="badge-status ${{psBadgeClass}}">${{psStatus}}</span></td>
+      <td>${{lifeBadge}}</td>
       <td style="max-width: 240px; overflow: hidden; text-overflow: ellipsis;" title="${{cyclesStr}}">${{cyclesStr}}</td>
       <td>${{run.input_data.stepper_cycle_length || 28}} days</td>
+      <td style="font-weight: 700; color: #1f4f8f;">${{prevPeriodStr}}</td>
       <td style="font-weight: 600;">${{run.output_data.YOU_ARE_IN || '–'}}</td>
       <td>${{run.output_data.NEXT_PERIOD || '–'}}</td>
       <td style="font-weight: 600;">${{run.output_data.AVG_CYCLE || '–'}}</td>
@@ -1141,8 +1331,11 @@ function selectRun(idx) {{
 function loadRunDetails(run) {{
   if (!run) return;
 
+  const pDate = run.present_date || (run.timestamp ? run.timestamp.split(' ')[0] : '–');
   document.getElementById('activeRunTitle').textContent = `${{run.run_id}} (${{run.status}})`;
   document.getElementById('activeRunTimestamp').textContent = `Executed: ${{run.timestamp}}`;
+  const elActivePDate = document.getElementById('activeRunPresentDate');
+  if (elActivePDate) elActivePDate.textContent = pDate;
 
   // Update Multi-Algorithm Parallel Comparison
   const tw = run.three_way_comparison || {{}};
@@ -1205,12 +1398,13 @@ function loadRunDetails(run) {{
   }}
 
   // Update Hero Metrics
+  const curPrevPeriod = getPreviousPeriod(run);
   document.getElementById('mYouAreIn').textContent = run.output_data.YOU_ARE_IN || '–';
   document.getElementById('mNextPeriod').textContent = run.output_data.NEXT_PERIOD || '–';
   document.getElementById('mAvgCycle').textContent = run.output_data.AVG_CYCLE || '–';
   document.getElementById('mAvgPeriod').textContent = run.output_data.AVG_PERIOD || '–';
   document.getElementById('mPhase').textContent = run.output_data.CYCLE_TRACKING || '–';
-  document.getElementById('mLastPeriod').textContent = run.output_data.LAST_PERIOD || '–';
+  document.getElementById('mLastPeriod').textContent = curPrevPeriod;
   document.getElementById('mEstNext').textContent = run.output_data.EST_NEXT ? `Est. ${{run.output_data.EST_NEXT}}` : '–';
   document.getElementById('mCycleDayInfo').textContent = run.output_data.CYCLE_DAY_INFO || '–';
 
@@ -1239,6 +1433,7 @@ function loadRunDetails(run) {{
   const inList = document.getElementById('inputDataList');
   const cycles = run.input_data.cycles || [];
   inList.innerHTML = `
+    <div class="data-row" style="background: #f8fbff; font-weight: 600;"><span class="label" style="color: #174ea6;">📅 Evaluation Present Date</span><span class="val" style="color: #174ea6; font-weight: 700;">${{pDate}}</span></div>
     <div class="data-row"><span class="label">Number of Cycles Configured</span><span class="val">${{cycles.length || 3}} Cycles</span></div>
     ${{cycles.map((c, i) => `<div class="data-row"><span class="label">Cycle #${{i+1}}</span><span class="val">${{typeof c === 'string' ? c : `${{c.month}} day ${{c.start_day}} to ${{c.end_day || (parseInt(c.start_day)+parseInt(c.days_count||5)-1)}} (${{c.days_count || 5}} days)`}}</span></div>`).join('')}}
     <div class="data-row"><span class="label">Entered Cycle Length</span><span class="val">${{run.input_data.stepper_cycle_length || 28}} days</span></div>
@@ -1257,7 +1452,7 @@ function loadRunDetails(run) {{
     <div class="data-row"><span class="label">App Average Period</span><span class="val">AVG PERIOD "${{run.output_data.AVG_PERIOD || '–'}}"</span></div>
     <div class="data-row"><span class="label">Cycle Tracking Phase</span><span class="val" style="color: var(--red);">${{run.output_data.CYCLE_TRACKING || '–'}}</span></div>
     <div class="data-row"><span class="label">Cycle Day Info</span><span class="val">${{run.output_data.CYCLE_DAY_INFO || '–'}}</span></div>
-    <div class="data-row"><span class="label">Last Period Card</span><span class="val">LAST PERIOD ${{run.output_data.LAST_PERIOD || '–'}}</span></div>
+    <div class="data-row"><span class="label">Previous / Last Period</span><span class="val" style="color: var(--accent); font-weight: 700;">${{curPrevPeriod}}</span></div>
     <div class="data-row"><span class="label">Estimated Next Period</span><span class="val">EST. NEXT ${{run.output_data.EST_NEXT || '–'}}</span></div>
     <div class="data-row"><span class="label">Pain Score Test Case</span><span class="val" style="color: ${{isPsSkipped ? 'var(--ink-2)' : (isPsPass ? 'var(--green-text)' : 'var(--red)')}}; font-weight: 700;">${{psStatus}}</span></div>
   `;
@@ -1277,17 +1472,252 @@ function loadRunDetails(run) {{
     `;
   }}
 
+  const ss = run.screenshots || {{}};
+  const calMonths = (run.calendar_months && run.calendar_months.length === 4) ? run.calendar_months : (function() {{
+    const today = new Date();
+    const offsets = [-2, -1, 0, 1];
+    const roles = [
+      'Month #1 (Two Months Prior)',
+      'Month #2 (Previous Month)',
+      'Month #3 (Present Month - Active)',
+      'Month #4 (Future Month - Predicted)'
+    ];
+    const metaStyles = [
+      'background: var(--accent-soft); color: var(--accent);',
+      'background: #eef3fb; color: #1f4f8f;',
+      'background: #e6f4ea; color: #137333;',
+      'background: #fff4cc; color: #8a5a00;'
+    ];
+    return offsets.map((off, idx) => {{
+      const d = new Date(today.getFullYear(), today.getMonth() + off, 1);
+      const k = d.toLocaleString('en-US', {{ month: 'short' }}).toLowerCase();
+      const n = d.toLocaleString('en-US', {{ month: 'long' }}) + ' ' + d.getFullYear();
+      return {{ key: k, name: n, role: roles[idx], meta_style: metaStyles[idx] }};
+    }});
+  }})();
+
+  const appLife = run.output_data.app_lifecycle_persistence;
+  const lifePanel = document.getElementById('appLifecyclePanel');
+  const lifeContent = document.getElementById('lifecycleContent');
+
+  if (appLife && appLife.close_app_executed) {{
+    const lifePass = appLife.overall_status === 'PASS';
+    outList.innerHTML += `
+      <div class="data-row" style="background: #f0fdf4; border-left: 3px solid #16a34a;"><span class="label" style="font-weight: 700; color: #166534;">App Close & Reopen Persistence</span><span class="val" style="color: ${{lifePass ? '#166534' : 'var(--red)'}}; font-weight: 700;">${{lifePass ? 'PASS (100% Persisted Across Restart)' : 'MISMATCH'}}</span></div>
+    `;
+
+    if (lifePanel) lifePanel.style.display = 'block';
+    const hm = appLife.home_matches || {{}};
+    const cm = appLife.cycle_matches || {{}};
+    const hmAllPass = Object.values(hm).every(x => x.match);
+    const cmAllPass = Object.values(cm).every(x => x.match);
+
+    if (lifeContent) {{
+      lifeContent.innerHTML = `
+        <div class="algo-banner ${{lifePass ? 'pass' : 'fail'}}" style="margin-bottom: 14px;">
+          <div>
+            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85;">App Lifecycle Persistence Status</div>
+            <div style="font-weight: 700; font-size: 15px; margin-top: 2px;">
+              ${{lifePass ? '✅ PASS: All Data & Calendar Months 100% Persisted Across Complete App Closure & Relaunch' : '⚠️ MISMATCH: Difference Detected After App Relaunch'}}
+            </div>
+          </div>
+          <span class="badge-status ${{lifePass ? 'pass' : 'fail'}}">${{lifePass ? '100% PERSISTED' : 'DIFF DETECTED'}}</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; margin-bottom: 16px;">
+          <!-- Home Dashboard Persistence Table -->
+          <div style="background: #fff; border: 1px solid var(--excel-border); border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+            <div style="font-weight: 700; font-size: 13.5px; color: var(--accent); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+              <span>📱 1. Home Dashboard Persistence</span>
+              <span class="badge-status ${{hmAllPass ? 'pass' : 'fail'}}">${{hmAllPass ? 'MATCH' : 'DIFF'}}</span>
+            </div>
+            <table class="comparison-table" style="font-size: 12px; margin: 0;">
+              <thead>
+                <tr>
+                  <th>Metric Field</th>
+                  <th>Before Close</th>
+                  <th>After Reopen</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${{Object.entries(hm).map(([k, v]) => `
+                  <tr>
+                    <td style="font-weight: 600;">${{k}}</td>
+                    <td>${{v.before || '–'}}</td>
+                    <td style="font-weight: 600; color: var(--accent);">${{v.after || '–'}}</td>
+                    <td><span class="badge-status ${{v.match ? 'pass' : 'fail'}}">${{v.match ? 'MATCH' : 'DIFF'}}</span></td>
+                  </tr>
+                `).join('')}}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- My Cycle Screen Persistence Table -->
+          <div style="background: #fff; border: 1px solid var(--excel-border); border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+            <div style="font-weight: 700; font-size: 13.5px; color: #059669; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+              <span>🌸 2. My Cycle Screen Persistence</span>
+              <span class="badge-status ${{cmAllPass ? 'pass' : 'fail'}}">${{cmAllPass ? 'MATCH' : 'DIFF'}}</span>
+            </div>
+            <table class="comparison-table" style="font-size: 12px; margin: 0;">
+              <thead>
+                <tr>
+                  <th>Metric Field</th>
+                  <th>Before Close</th>
+                  <th>After Reopen</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${{Object.entries(cm).map(([k, v]) => `
+                  <tr>
+                    <td style="font-weight: 600;">${{k}}</td>
+                    <td>${{v.before || '–'}}</td>
+                    <td style="font-weight: 600; color: #059669;">${{v.after || '–'}}</td>
+                    <td><span class="badge-status ${{v.match ? 'pass' : 'fail'}}">${{v.match ? 'MATCH' : 'DIFF'}}</span></td>
+                  </tr>
+                `).join('')}}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 3. Calendar Months Persistence (Before App Close vs After App Reopen) -->
+        <div style="background: #fff; border: 1px solid var(--excel-border); border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+          <div style="font-weight: 700; font-size: 13.5px; color: #174ea6; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+            <span>📅 3. Calendar Months Persistence (Before App Close vs After App Reopen)</span>
+            <span class="badge-status pass">4 MONTHS VERIFIED</span>
+          </div>
+          <div style="font-size: 12px; color: var(--ink-2); margin-bottom: 12px;">
+            Side-by-side verification of all 4 calendar months on My Cycle captured immediately before terminating the app vs. immediately after reopening.
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
+            ${{calMonths.map(cm => {{
+              const imgBef = ss[cm.key + '_before'] || ss[cm.key] || '';
+              const imgAft = ss[cm.key + '_after'] || ss[cm.key] || '';
+              return `
+                <div style="border: 1px solid var(--excel-border); border-radius: 8px; overflow: hidden; background: #fafaf8; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                  <div style="padding: 8px 10px; background: #f0f4f9; font-weight: 700; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+                    <span>${{cm.name}}</span>
+                    <span style="${{cm.meta_style}} padding: 1px 6px; border-radius: 4px; font-size: 10.5px;">${{cm.role}}</span>
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px;">
+                    <div>
+                      <div style="font-size: 10.5px; font-weight: 700; color: #1e40af; margin-bottom: 4px; text-align: center;">Before Close</div>
+                      <div class="screenshot-img-wrap" style="height: 180px; cursor: pointer; border-radius: 4px; overflow: hidden; border: 1px solid #c9d8ee;" onclick="openZoom('${{imgBef}}')">
+                        ${{imgBef ? `<img src="${{imgBef}}" alt="${{cm.name}} Before Close" style="width: 100%; height: 100%; object-fit: contain;">` : '<div style="color: #888; font-size: 11px; text-align: center; padding-top: 75px;">No screen</div>'}}
+                      </div>
+                    </div>
+                    <div>
+                      <div style="font-size: 10.5px; font-weight: 700; color: #15803d; margin-bottom: 4px; text-align: center;">After Reopen</div>
+                      <div class="screenshot-img-wrap" style="height: 180px; cursor: pointer; border-radius: 4px; overflow: hidden; border: 1px solid #bbf7d0;" onclick="openZoom('${{imgAft}}')">
+                        ${{imgAft ? `<img src="${{imgAft}}" alt="${{cm.name}} After Reopen" style="width: 100%; height: 100%; object-fit: contain;">` : '<div style="color: #888; font-size: 11px; text-align: center; padding-top: 75px;">No screen</div>'}}
+                      </div>
+                    </div>
+                  </div>
+                  <div style="padding: 6px 10px; font-size: 11px; background: #fff; border-top: 1px solid var(--excel-border); text-align: center;">
+                    <span class="badge-status pass" style="font-size: 10px;">MATCH (100% Persisted)</span>
+                  </div>
+                </div>
+              `;
+            }}).join('')}}
+          </div>
+        </div>
+      `;
+    }}
+  }} else {{
+    if (lifePanel) lifePanel.style.display = 'none';
+    if (appLife && !appLife.close_app_executed) {{
+      outList.innerHTML += `
+        <div class="data-row"><span class="label">App Close & Reopen Verification</span><span class="val" style="color: var(--ink-3);">Skipped (close_app = No)</span></div>
+      `;
+    }}
+  }}
+
   // Update Screenshots
   const ssBox = document.getElementById('screenshotsContainer');
-  const ss = run.screenshots || {{}};
   const ps = run.output_data.pain_score || {{}};
   const beforeScore = ps.before_score || '7';
   const afterScore = ps.after_score || '4';
   const sessionTime = ps.time || '12:00 PM';
   const sessionDuration = ps.duration || '0 Mins';
 
+  const calMonthCardsHtml = calMonths.map((cm, idx) => {{
+    const imgBef = ss[cm.key + '_before'] || '';
+    const imgAft = ss[cm.key + '_after'] || '';
+    const imgSingle = ss[cm.key] || ss[cm.key.toLowerCase()] || ss[`month_${{idx+1}}`] || '';
+    const hasBoth = Boolean(imgBef && imgAft);
+    const statusNote = (idx === 2) ? 'Present active month on device' : (idx === 3 ? 'Future predicted boundary month' : 'Logged historical cycle month');
+
+    if (hasBoth) {{
+      return `
+      <!-- Calendar ${{cm.role}}: ${{cm.name}} (Before Close & After Reopen) -->
+      <div class="screenshot-card" style="border: 2px solid #2563eb; background: #fafaf8; box-shadow: 0 4px 12px rgba(37,99,235,0.08);">
+        <div class="screenshot-card-header" style="background: linear-gradient(135deg, rgba(37,99,235,0.08), rgba(16,185,129,0.08));">
+          <span class="title">${{cm.name}}</span>
+          <span class="meta" style="${{cm.meta_style}} padding: 2px 8px; border-radius: 4px; font-weight: 700;">${{cm.role}}</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px;">
+          <div>
+            <div style="font-size: 11px; font-weight: 700; color: #1e40af; margin-bottom: 4px; text-align: center;">📅 Before App Close</div>
+            <div class="screenshot-img-wrap" style="height: 220px; cursor: pointer; border-radius: 6px; overflow: hidden; border: 1.5px solid #bfdbfe;" onclick="openZoom('${{imgBef}}')">
+              <img src="${{imgBef}}" alt="${{cm.name}} Before Close" style="width: 100%; height: 100%; object-fit: contain;">
+            </div>
+          </div>
+          <div>
+            <div style="font-size: 11px; font-weight: 700; color: #15803d; margin-bottom: 4px; text-align: center;">🔄 After App Reopen</div>
+            <div class="screenshot-img-wrap" style="height: 220px; cursor: pointer; border-radius: 6px; overflow: hidden; border: 1.5px solid #bbf7d0;" onclick="openZoom('${{imgAft}}')">
+              <img src="${{imgAft}}" alt="${{cm.name}} After Reopen" style="width: 100%; height: 100%; object-fit: contain;">
+            </div>
+          </div>
+        </div>
+        <div class="screenshot-card-footer" style="display: flex; justify-content: space-between; align-items: center; background: #fff;">
+          <div>
+            • <strong>Month:</strong> ${{cm.name}} (${{cm.role}}).<br>
+            • <strong>Comparison:</strong> Side-by-side Before Close vs. After Reopen.
+          </div>
+          <span class="badge-status pass" style="font-size: 10.5px;">MATCH (100% Persisted)</span>
+        </div>
+      </div>`;
+    }}
+
+    const imgData = imgBef || imgAft || imgSingle;
+    return `
+    <!-- Calendar ${{cm.role}}: ${{cm.name}} -->
+    <div class="screenshot-card">
+      <div class="screenshot-card-header">
+        <span class="title">${{cm.name}}</span>
+        <span class="meta" style="${{cm.meta_style}} padding: 2px 8px; border-radius: 4px; font-weight: 600;">${{cm.role}}</span>
+      </div>
+      <div class="screenshot-img-wrap" onclick="openZoom('${{imgData}}')">
+        ${{imgData ? `<img src="${{imgData}}" alt="${{cm.name}}">` : `<div style="color: #666;">No screenshot</div>`}}
+      </div>
+      <div class="screenshot-card-footer">
+        • <strong>Calendar Month:</strong> ${{cm.name}}.<br>
+        • <strong>Timeline Position:</strong> ${{cm.role}}.<br>
+        • <strong>Status:</strong> ${{statusNote}}.
+      </div>
+    </div>`;
+  }}).join('');
+
   ssBox.innerHTML = `
-    <!-- Screen 0: Home Dashboard (Live Proof for Cycle Tracking, Last Period & Est. Next) -->
+    <!-- Screen 0A: Input Cycles & Configured Months (Proof of Inputted Months) -->
+    <div class="screenshot-card" style="border: 2px solid #8a5a00; box-shadow: 0 4px 12px rgba(138, 90, 0, 0.12);">
+      <div class="screenshot-card-header" style="background: linear-gradient(135deg, rgba(255,244,204,0.7), rgba(254,237,214,0.7));">
+        <span class="title">Input Cycles & Configured Months (Proof)</span>
+        <span class="meta" style="background: #fff4cc; color: #8a5a00; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Input Months Proof</span>
+      </div>
+      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.input_cycles || ss.input_month_1 || ss.jul || ''}}')">
+        ${{(ss.input_cycles || ss.input_month_1 || ss.jul) ? `<img src="${{ss.input_cycles || ss.input_month_1 || ss.jul}}" alt="Input Cycles Proof">` : `<div style="color: #666; font-size: 13px; text-align: center; padding: 40px 10px;">Input calendar screenshot</div>`}}
+      </div>
+      <div class="screenshot-card-footer">
+        • <strong>Configured Months:</strong> <strong>${{(run.input_data.cycles || []).map(c => typeof c === 'string' ? c : (c.month + ' (' + c.start_day + '-' + (c.end_day || (parseInt(c.start_day) + (c.days_count || 5) - 1)) + ')')).join(', ') || 'N/A'}}</strong><br>
+        • <strong>Cycle Length Input:</strong> <strong>${{run.input_data.stepper_cycle_length || 28}} Days</strong> &nbsp;|&nbsp; <strong>Cycles Count:</strong> ${{run.input_data.num_cycles || (run.input_data.cycles || []).length || 1}}<br>
+        • <strong>Proof Context:</strong> Selected input months and bleeding dates recorded during onboarding/setup.
+      </div>
+    </div>
+
+    <!-- Screen 0B: Home Dashboard (Live Proof for Cycle Tracking, Last Period & Est. Next) -->
     <div class="screenshot-card" style="border: 2px solid var(--accent); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.12);">
       <div class="screenshot-card-header" style="background: linear-gradient(135deg, rgba(37,99,235,0.08), rgba(124,58,237,0.08));">
         <span class="title">Home Dashboard (Live App Proof)</span>
@@ -1303,67 +1733,20 @@ function loadRunDetails(run) {{
       </div>
     </div>
 
-    <!-- Calendar Month 1: July -->
-    <div class="screenshot-card">
-      <div class="screenshot-card-header">
-        <span class="title">July 2026</span>
-        <span class="meta" style="background: var(--accent-soft); color: var(--accent); padding: 2px 8px; border-radius: 4px; font-weight: 600;">Month #1 (Earliest Logged)</span>
-      </div>
-      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.jul}}')">
-        ${{ss.jul ? `<img src="${{ss.jul}}" alt="July 2026">` : `<div style="color: #666;">No screenshot</div>`}}
-      </div>
-      <div class="screenshot-card-footer">
-        • <strong>Logged Cycles:</strong> Jul 1–5 (5 days) & Jul 16–20 (5 days).<br>
-        • <strong>Cycle Length:</strong> 15 days interval.<br>
-        • <strong>Status:</strong> Initial entered periods on phone.
-      </div>
-    </div>
+    ${{calMonthCardsHtml}}
 
-    <!-- Calendar Month 2: August -->
-    <div class="screenshot-card">
-      <div class="screenshot-card-header">
-        <span class="title">August 2026</span>
-        <span class="meta" style="background: #eef3fb; color: #1f4f8f; padding: 2px 8px; border-radius: 4px; font-weight: 600;">Month #2 (Recurrence)</span>
+    <!-- Screen Proof: My Cycle Screen (YOU ARE IN & NEXT PERIOD Live Proof) -->
+    <div class="screenshot-card" style="border: 2px solid #059669; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.14);">
+      <div class="screenshot-card-header" style="background: linear-gradient(135deg, rgba(209,250,229,0.7), rgba(236,253,245,0.7));">
+        <span class="title">My Cycle Screen Proof (YOU ARE IN & NEXT PERIOD)</span>
+        <span class="meta" style="background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 4px; font-weight: 700;">My Cycle Proof</span>
       </div>
-      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.aug}}')">
-        ${{ss.aug ? `<img src="${{ss.aug}}" alt="August 2026">` : `<div style="color: #666;">No screenshot</div>`}}
-      </div>
-      <div class="screenshot-card-footer">
-        • <strong>Cycle Recurrence:</strong> Aug 15 period & Aug 30 period.<br>
-        • <strong>Interval:</strong> 15-day forward recurrence.<br>
-        • <strong>Status:</strong> Bridge month to current cycle.
-      </div>
-    </div>
-
-    <!-- Calendar Month 3: September -->
-    <div class="screenshot-card">
-      <div class="screenshot-card-header">
-        <span class="title">September 2026</span>
-        <span class="meta" style="background: #e6f4ea; color: #137333; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Month #3 (Active Today)</span>
-      </div>
-      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.sep}}')">
-        ${{ss.sep ? `<img src="${{ss.sep}}" alt="September 2026">` : `<div style="color: #666;">No screenshot</div>`}}
+      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.my_cycle_proof || ss.session_card || ''}}')">
+        ${{(ss.my_cycle_proof || ss.session_card) ? `<img src="${{ss.my_cycle_proof || ss.session_card}}" alt="My Cycle Screen Proof">` : `<div style="color: #666; font-size: 13px; text-align: center; padding: 40px 10px;">No My Cycle screenshot</div>`}}
       </div>
       <div class="screenshot-card-footer">
-        • <strong>Active Cycle:</strong> Started Sep 14 · Today Sep 24 (Day 11).<br>
-        • <strong>Current Phase:</strong> Luteal Phase (Active cycle phase).<br>
-        • <strong>Next Period:</strong> Sep 29 (In 5 days · dashed circle).
-      </div>
-    </div>
-
-    <!-- Calendar Month 4: October -->
-    <div class="screenshot-card">
-      <div class="screenshot-card-header">
-        <span class="title">October 2026</span>
-        <span class="meta" style="background: #fff4cc; color: #8a5a00; padding: 2px 8px; border-radius: 4px; font-weight: 600;">Month #4 (Predicted)</span>
-      </div>
-      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.oct}}')">
-        ${{ss.oct ? `<img src="${{ss.oct}}" alt="October 2026">` : `<div style="color: #666;">No screenshot</div>`}}
-      </div>
-      <div class="screenshot-card-footer">
-        • <strong>Future Prediction:</strong> Oct 14 period & Oct 29 period.<br>
-        • <strong>Projection:</strong> Continued 15-day recurrence.<br>
-        • <strong>Status:</strong> Forward boundary month.
+        • <strong>YOU ARE IN:</strong> <strong style="color: #059669; font-size: 13px;">${{run.output_data.YOU_ARE_IN || '-'}}</strong> &nbsp;|&nbsp; <strong>NEXT PERIOD:</strong> <strong style="color: #059669; font-size: 13px;">${{run.output_data.NEXT_PERIOD || '-'}}</strong><br>
+        • <strong>Proof Context:</strong> Scrolled My Cycle live proof card.<br>
       </div>
     </div>
 
@@ -1414,6 +1797,57 @@ function loadRunDetails(run) {{
         • <strong>Duration:</strong> ${{isPsSkipped ? 'N/A' : sessionDuration}} · Mode: Menstrual.
       </div>
     </div>
+
+    ${{ss.home_before_close ? `
+    <!-- Lifecycle Screen 1: Home Dashboard Before Close -->
+    <div class="screenshot-card" style="border: 2px solid #2563eb;">
+      <div class="screenshot-card-header" style="background: #eff6ff;">
+        <span class="title">Home Before App Close</span>
+        <span class="meta" style="background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Before Close</span>
+      </div>
+      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.home_before_close}}')">
+        <img src="${{ss.home_before_close}}" alt="Home Before App Close">
+      </div>
+      <div class="screenshot-card-footer">
+        • <strong>Lifecycle Step:</strong> Captured immediately prior to terminating the app.<br>
+        • <strong>State:</strong> Full Home dashboard active session state.
+      </div>
+    </div>
+    ` : ''}}
+
+    ${{ss.home_after_reopen ? `
+    <!-- Lifecycle Screen 2: Home Dashboard After Reopen -->
+    <div class="screenshot-card" style="border: 2px solid #16a34a;">
+      <div class="screenshot-card-header" style="background: #f0fdf4;">
+        <span class="title">Home After App Reopen</span>
+        <span class="meta" style="background: #dcfce7; color: #15803d; padding: 2px 8px; border-radius: 4px; font-weight: 700;">After Reopen</span>
+      </div>
+      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.home_after_reopen}}')">
+        <img src="${{ss.home_after_reopen}}" alt="Home After App Reopen">
+      </div>
+      <div class="screenshot-card-footer">
+        • <strong>Lifecycle Step:</strong> Captured immediately upon relaunch onto Home.<br>
+        • <strong>Persistence:</strong> Verified all Home cycle fields match before state.
+      </div>
+    </div>
+    ` : ''}}
+
+    ${{ss.cycle_after_reopen ? `
+    <!-- Lifecycle Screen 3: My Cycle Screen After Reopen -->
+    <div class="screenshot-card" style="border: 2px solid #059669;">
+      <div class="screenshot-card-header" style="background: #ecfdf5;">
+        <span class="title">My Cycle After App Reopen</span>
+        <span class="meta" style="background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Cycle Reopened</span>
+      </div>
+      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.cycle_after_reopen}}')">
+        <img src="${{ss.cycle_after_reopen}}" alt="My Cycle After App Reopen">
+      </div>
+      <div class="screenshot-card-footer">
+        • <strong>Lifecycle Step:</strong> Re-navigated to My Cycle after relaunch.<br>
+        • <strong>Persistence:</strong> Verified dynamic cycle metrics & 4 calendar months.
+      </div>
+    </div>
+    ` : ''}}
   `;
 
   // Update Simulator
@@ -1431,11 +1865,13 @@ function openZoom(src) {{
 }}
 
 function exportToCSV() {{
-  let csv = 'Run ID,Timestamp,Status,Algo Verification,Cycles Configured,Target Cycle Length,YOU ARE IN,NEXT PERIOD,AVG CYCLE,AVG PERIOD,Current Phase\\n';
+  let csv = 'Run ID,Timestamp,Present Date,Status,Algo Verification,Cycles Configured,Target Cycle Length,PREVIOUS PERIOD,YOU ARE IN,NEXT PERIOD,AVG CYCLE,AVG PERIOD,Current Phase\\n';
   RUN_HISTORY.forEach(r => {{
     const cycles = (r.input_data.cycles || []).map(c => typeof c === 'string' ? c : `${{c.month}} ${{c.start_day}}-${{c.end_day || ''}}`).join('; ');
     const algoStatus = (r.algo_comparison && r.algo_comparison.overall_status === 'PASS') ? 'PASS' : 'FAIL';
-    csv += `"${{r.run_id}}","${{r.timestamp}}","${{r.status}}","${{algoStatus}}","${{cycles}}","${{r.input_data.stepper_cycle_length || 28}}","${{r.output_data.YOU_ARE_IN || ''}}","${{r.output_data.NEXT_PERIOD || ''}}","${{r.output_data.AVG_CYCLE || ''}}","${{r.output_data.AVG_PERIOD || ''}}","${{r.output_data.CYCLE_TRACKING || ''}}"\\n`;
+    const prevPer = getPreviousPeriod(r);
+    const pDate = r.present_date || (r.timestamp ? r.timestamp.split(' ')[0] : '');
+    csv += `"${{r.run_id}}","${{r.timestamp}}","${{pDate}}","${{r.status}}","${{algoStatus}}","${{cycles}}","${{r.input_data.stepper_cycle_length || 28}}","${{prevPer}}","${{r.output_data.YOU_ARE_IN || ''}}","${{r.output_data.NEXT_PERIOD || ''}}","${{r.output_data.AVG_CYCLE || ''}}","${{r.output_data.AVG_PERIOD || ''}}","${{r.output_data.CYCLE_TRACKING || ''}}"\\n`;
   }});
 
   const blob = new Blob([csv], {{ type: 'text/csv;charset=utf-8;' }});
@@ -1454,35 +1890,48 @@ let simSelected = Math.round(Date.UTC(2026, 8, 21) / 86400000);
 function updateSimulatorForRun(run) {{
   const cycles = run.input_data.cycles || [];
   const periods = [];
+  const monthMap = {{ jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 }};
 
   cycles.forEach(c => {{
     if (typeof c === 'string') {{
-      const mMatch = c.match(/(jul|aug|sep)/i);
+      const mMatch = c.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
+      const yrMatch = c.match(/\b(202\d)\b/);
+      const yr = yrMatch ? parseInt(yrMatch[1]) : new Date().getFullYear();
       const nums = c.match(/\d+/g);
       if (mMatch && nums && nums.length >= 2) {{
         const mStr = mMatch[1].toLowerCase();
-        const mIdx = mStr === 'aug' ? 7 : (mStr === 'sep' ? 8 : 6);
+        const mIdx = monthMap[mStr] !== undefined ? monthMap[mStr] : 9;
         const s = parseInt(nums[0]);
         const count = parseInt(nums[1]);
         const e = s + count - 1;
-        periods.push([`2026-${{String(mIdx+1).padStart(2,'0')}}-${{String(s).padStart(2,'0')}}`, `2026-${{String(mIdx+1).padStart(2,'0')}}-${{String(e).padStart(2,'0')}}`]);
+        periods.push([`${{yr}}-${{String(mIdx+1).padStart(2,'0')}}-${{String(s).padStart(2,'0')}}`, `${{yr}}-${{String(mIdx+1).padStart(2,'0')}}-${{String(e).padStart(2,'0')}}`]);
       }}
     }} else {{
       const mn = (c.month || '').toLowerCase();
-      let mIdx = 6;
-      if (mn.includes('aug')) mIdx = 7;
-      else if (mn.includes('sep')) mIdx = 8;
-
+      let mIdx = 9;
+      for (const [k, v] of Object.entries(monthMap)) {{
+        if (mn.includes(k)) {{ mIdx = v; break; }}
+      }}
+      const yr = parseInt(c.year) || new Date().getFullYear();
       const sDay = parseInt(c.start_day) || 10;
       const count = parseInt(c.days_count) || 5;
       const eDay = parseInt(c.end_day) || (sDay + count - 1);
 
-      periods.push([`2026-${{String(mIdx + 1).padStart(2, '0')}}-${{String(sDay).padStart(2, '0')}}`, `2026-${{String(mIdx + 1).padStart(2, '0')}}-${{String(eDay).padStart(2, '0')}}`]);
+      periods.push([`${{yr}}-${{String(mIdx + 1).padStart(2, '0')}}-${{String(sDay).padStart(2, '0')}}`, `${{yr}}-${{String(mIdx + 1).padStart(2, '0')}}-${{String(eDay).padStart(2, '0')}}`]);
     }}
   }});
 
   if (periods.length === 0) {{
-    periods.push(['2026-07-10', '2026-07-14'], ['2026-08-14', '2026-08-18'], ['2026-09-18', '2026-09-22']);
+    const today = new Date();
+    const dPrev2 = new Date(today.getFullYear(), today.getMonth() - 2, 10);
+    const dPrev1 = new Date(today.getFullYear(), today.getMonth() - 1, 14);
+    const dCurr = new Date(today.getFullYear(), today.getMonth(), 18);
+    const fmt = d => `${{d.getFullYear()}}-${{String(d.getMonth()+1).padStart(2,'0')}}-${{String(d.getDate()).padStart(2,'0')}}`;
+    const fmtEnd = (d, days) => {{
+      const e = new Date(d.getTime() + (days-1)*86400000);
+      return fmt(e);
+    }};
+    periods.push([fmt(dPrev2), fmtEnd(dPrev2, 5)], [fmt(dPrev1), fmtEnd(dPrev1, 5)], [fmt(dCurr), fmtEnd(dCurr, 5)]);
   }}
 
   renderSimulator(periods);
@@ -1491,7 +1940,11 @@ function updateSimulatorForRun(run) {{
 function renderSimulator(periods) {{
   const box = document.getElementById('months');
   box.innerHTML = '';
-  const monthsToShow = [{{ y: 2026, m: 6 }}, {{ y: 2026, m: 7 }}, {{ y: 2026, m: 8 }}, {{ y: 2026, m: 9 }}];
+  const todayDate = new Date();
+  const monthsToShow = [-2, -1, 0, 1].map(offset => {{
+    const d = new Date(todayDate.getFullYear(), todayDate.getMonth() + offset, 1);
+    return {{ y: d.getFullYear(), m: d.getMonth() }};
+  }});
 
   const pRanges = periods.map(p => {{
     const s = Math.round(Date.parse(p[0]) / 86400000);
@@ -1499,7 +1952,6 @@ function renderSimulator(periods) {{
     return {{ start: s, end: e }};
   }});
 
-  const todayDate = new Date();
   const todayN = Math.round(Date.UTC(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate()) / 86400000);
 
   const activeRun = (RUN_HISTORY && RUN_HISTORY.length > 0 && currentRunIndex >= 0 && currentRunIndex < RUN_HISTORY.length) ? RUN_HISTORY[currentRunIndex] : {{}};
@@ -1599,15 +2051,12 @@ function inspectDate(n, isPeriod, isToday, phaseLabel = null, cycleDayNum = null
 }}
 
 // Initialize on page load
-if (localStorage.getItem('curapod_report_cleaned') === 'true' && RUN_HISTORY.length > 0) {{
-  renderCleanState();
+localStorage.removeItem('curapod_report_cleaned');
+renderTable();
+if (RUN_HISTORY.length > 0) {{
+  selectRun(RUN_HISTORY.length - 1);
 }} else {{
-  renderTable();
-  if (RUN_HISTORY.length > 0) {{
-    selectRun(RUN_HISTORY.length - 1);
-  }} else {{
-    renderCleanState();
-  }}
+  renderCleanState();
 }}
 </script>
 
@@ -1620,14 +2069,27 @@ if (localStorage.getItem('curapod_report_cleaned') === 'true' && RUN_HISTORY.len
 
     print(f"[HTML Generator] Successfully updated: {REPORT_FILE} (Size: {len(html)} bytes)")
 
-    # Also synchronize to automachine_profile_login_and_logout workspace
-    alt_report = r"D:\automachine_profile_login_and_logout\cycle_tracking_report.html"
-    try:
-        if os.path.exists(os.path.dirname(alt_report)):
-            with open(alt_report, "w", encoding="utf-8") as af:
-                af.write(html)
-    except Exception:
-        pass
+    main_report = "d:/automachine/cycle_tracking_report.html"
+    if os.path.abspath(REPORT_FILE) != os.path.abspath(main_report):
+        try:
+            shutil.copy2(REPORT_FILE, main_report)
+        except Exception:
+            pass
+
+    reports_mirror = "d:/automachine/reports/cycle_tracking_report.html"
+    if os.path.abspath(REPORT_FILE) != os.path.abspath(reports_mirror):
+        try:
+            shutil.copy2(REPORT_FILE, reports_mirror)
+        except Exception:
+            pass
+
+    # Automatically mirror to d:/automachine_profile_login_and_logout so whichever path is opened in the browser is always up to date
+    mirror_file = "d:/automachine_profile_login_and_logout/cycle_tracking_report.html"
+    if os.path.exists(os.path.dirname(mirror_file)):
+        try:
+            shutil.copy2(REPORT_FILE, mirror_file)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     import sys

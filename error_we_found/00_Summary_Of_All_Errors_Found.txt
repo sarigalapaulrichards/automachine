@@ -1,0 +1,57 @@
+================================================================================
+MASTER SUMMARY REPORT: ALL ERRORS IDENTIFIED IN cycle_tracking_report.html
+Folder: automachine/error_we_found
+Target Page: d:/automachine/cycle_tracking_report.html
+Total Test Runs Analyzed: 82 Runs (RUN-001 through RUN-082)
+================================================================================
+
+EXECUTIVE OVERVIEW
+--------------------------------------------------------------------------------
+This folder documents every defect and algorithm mismatch displayed on the HTML 
+page `cycle_tracking_report.html` (Curapod-M — Test Run History & Cycle Algorithm Simulator).
+
+In the HTML report:
+- Total Executed Runs: 82
+- Runs with Algorithm Mismatch: 82 (100% of runs)
+- Multi-Algorithm Status:
+    • Ours (App UI) vs 1st Algorithm: FAIL (Mismatched across all runs)
+    • Ours (App UI) vs 2nd Algorithm: FAIL (Mismatched across all runs)
+    • 1st Algorithm vs 2nd Algorithm: PASS / 100% AGREEMENT
+      (Both clinical algorithms calculate the exact same values, proving that 
+       the mobile app UI calculations and displays are where the errors reside).
+
+Rather than reporting 82 disconnected errors, the failures are grouped into 
+4 COMMON ROOT CAUSES, with all individual failing runs detailed in each file.
+
+
+INDEX OF ERROR REPORTS
+--------------------------------------------------------------------------------
+
+1. File: Error_1_Negative_Next_Period_Countdown_In_App_UI.txt
+   Description: App UI renders negative countdowns ("In -74 days", "In -73 days", 
+                "In -44 days", "In -12 days") instead of projecting future recurrence.
+   Affected Runs: 82 Runs
+   Severity: Critical
+
+2. File: Error_2_Placeholder_NA_Values_For_Active_Cycle_Day_And_Phase.txt
+   Description: App UI displays uninitialized placeholders ("- day of cycle", "N/A") 
+                for current cycle day and tracking phase.
+   Affected Runs: 56 Runs
+   Severity: Critical
+
+3. File: Error_3_Stale_Historical_Dates_For_Last_Period_And_Est_Next.txt
+   Description: App UI displays historical dates from months ago (e.g. LAST PERIOD: "Jul 11", 
+                EST. NEXT: "Jul 27") instead of identifying active current cycle dates.
+   Affected Runs: 78 Runs
+   Severity: High
+
+4. File: Error_4_Cycle_Phase_Classification_Conflict_On_Boundary_Days.txt
+   Description: Boundary day classification conflict between App UI and Clinical 
+                Algorithm (e.g. Luteal vs Menstruation).
+   Affected Runs: 1 Run(s)
+   Severity: Medium
+
+================================================================================
+EACH FILE CONTAINS COMPLETE ROOT CAUSE ANALYSIS, AFFECTED RUN LISTS WITH 
+INPUT/OUTPUT COMPARISONS, EXPECTED VS ACTUAL BEHAVIOR, AND RECOMMENDED FIXES.
+================================================================================

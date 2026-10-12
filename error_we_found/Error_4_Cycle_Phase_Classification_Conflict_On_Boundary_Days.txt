@@ -1,0 +1,38 @@
+================================================================================
+ERROR REPORT 4: Cycle Phase Classification Conflict on Boundary Days
+Source: cycle_tracking_report.html (Test Run History & Cycle Algorithm Simulator)
+Category: Clinical Phase Classification Logic
+Severity: Medium
+Total Affected Runs: 1 Run(s)
+================================================================================
+
+1. ERROR DESCRIPTION
+--------------------------------------------------------------------------------
+In specific boundary test runs (e.g. RUN-068), the mobile app UI and the clinical 
+algorithms disagree on the active cycle phase (for example, Luteal vs Menstruation).
+
+
+2. ROOT CAUSE ANALYSIS (WHY IT FAILED)
+--------------------------------------------------------------------------------
+1. Boundary Day Inclusivity:
+   On the boundary day separating period flow from the subsequent phase, the app 
+   uses an exclusive comparison (`day > period_length`), transitioning early, while 
+   the clinical algorithm uses an inclusive comparison (`day <= period_length`), 
+   keeping the day classified under Menstruation.
+
+
+3. AFFECTED RUNS
+--------------------------------------------------------------------------------
+  • RUN-068 (2026-10-09 02:07:22)
+      App UI Phase: 'N/A' vs Algo: 'Menstruation'
+      App UI Day:   '- day of cycle' vs Algo: 'Day 1'
+
+
+4. RECOMMENDED FIX
+--------------------------------------------------------------------------------
+1. Standardize phase window boundaries across mobile app and Python algorithm:
+   - Menstruation: [Day 1, period_length] inclusive.
+   - Follicular: [period_length + 1, ovulation_day - 5].
+   - Fertile: [ovulation_day - 4, ovulation_day + 1].
+   - Luteal: [ovulation_day + 2, cycle_length].
+================================================================================

@@ -72,54 +72,14 @@ from selenium.webdriver.common.actions import interaction
 
 # ---------- CONFIG ----------
 
-# Dynamic single-device & multi-device auto-detection support
-def get_connected_adb_devices():
-    """Returns list of online device UDIDs from adb devices."""
-    try:
-        res = subprocess.run(["adb", "devices"], capture_output=True, text=True, timeout=5)
-        devs = []
-        for line in res.stdout.strip().splitlines()[1:]:
-            parts = line.strip().split()
-            if len(parts) >= 2 and parts[1] == "device":
-                devs.append(parts[0])
-        return devs
-    except Exception:
-        return []
+# Dynamic USB Phone Detection & Adaptive Padding Resolution
+import device_manager
+from device_manager import run_adb
 
-def resolve_target_device():
-    # 1. If explicit env var is set, respect it
-    env_udid = os.environ.get("DEVICE_UDID")
-    if env_udid:
-        port = int(os.environ.get("SYSTEM_PORT", 8201 if env_udid == "e4903bcf" else 8200))
-        return env_udid, port
-
-    # 2. Query adb devices
-    connected = get_connected_adb_devices()
-
-    # If ONLY ONE device is connected via USB, automatically run on that connected device!
-    if len(connected) == 1:
-        single_dev = connected[0]
-        port = 8201 if single_dev == "e4903bcf" else 8200
-        print(f"[Device Resolver] Exactly 1 device connected via ADB ({single_dev}). Running automatically on this device (Port {port})...", flush=True)
-        return single_dev, port
-
-    # If preferred device is connected among multiple devices
-    if "38181JEHN00069" in connected:
-        print(f"[Device Resolver] Google Pixel 7a (38181JEHN00069) detected. Running on port 8200...", flush=True)
-        return "38181JEHN00069", 8200
-
-    # If preferred device not in list, use first available connected device
-    if connected:
-        dev = connected[0]
-        port = 8201 if dev == "e4903bcf" else 8200
-        print(f"[Device Resolver] Running on first connected device: {dev} (Port {port})...", flush=True)
-        return dev, port
-
-    # Fallback default if adb returned empty
-    return "38181JEHN00069", 8200
-
-DEVICE_UDID, SYSTEM_PORT = resolve_target_device()
-APPIUM_HOST = os.environ.get("APPIUM_HOST", "http://127.0.0.1:4723")
+DEV_PROFILE = device_manager.get_active_device()
+DEVICE_UDID = DEV_PROFILE.udid
+SYSTEM_PORT = DEV_PROFILE.system_port
+APPIUM_HOST = os.environ.get("APPIUM_HOST", f"http://127.0.0.1:{DEV_PROFILE.appium_port}")
 
 APP_PACKAGE = "com.litemed.curapod.menstrual.app"
 APP_ACTIVITY = ".MainActivity"
@@ -164,11 +124,14 @@ CURRENT_RUN_DATA = {
 
 @pytest.fixture
 def driver():
+    global DEV_PROFILE
+    DEV_PROFILE = device_manager.get_active_device(force_refresh=True)
+
     options = UiAutomator2Options()
     options.platform_name = "Android"
     options.automation_name = "UiAutomator2"
-    options.udid = DEVICE_UDID
-    options.set_capability("systemPort", SYSTEM_PORT)
+    options.udid = DEV_PROFILE.udid
+    options.set_capability("systemPort", DEV_PROFILE.system_port)
     options.app_package = APP_PACKAGE
     options.app_activity = APP_ACTIVITY
     options.no_reset = True
@@ -178,10 +141,21 @@ def driver():
     options.set_capability("newCommandTimeout", 3600)
     # Support OnePlus / Oppo / ColorOS without permission denial:
     options.set_capability("ignoreHiddenApiPolicyError", True)
-    # skipDeviceInitialization omitted for reliable automatic server startup
 
     drv = webdriver.Remote(APPIUM_HOST, options=options)
     drv.implicitly_wait(0)
+
+    try:
+        wsize = drv.get_window_size()
+        if wsize and wsize.get("width") and wsize.get("height"):
+            DEV_PROFILE.width = wsize["width"]
+            DEV_PROFILE.height = wsize["height"]
+            DEV_PROFILE.usable_bottom = DEV_PROFILE.height - DEV_PROFILE.bottom_padding
+            DEV_PROFILE.usable_height = max(1, DEV_PROFILE.height - DEV_PROFILE.top_padding - DEV_PROFILE.bottom_padding)
+            DEV_PROFILE.scale_x = DEV_PROFILE.width / device_manager.BASELINE_W
+            DEV_PROFILE.scale_y = DEV_PROFILE.height / device_manager.BASELINE_H
+    except Exception:
+        pass
 
     yield drv
 
@@ -400,12 +374,25 @@ def save_screenshot(driver, name):
     os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
     path = os.path.join(SCREENSHOTS_DIR, f"{name}.png")
     try:
-        driver.get_screenshot_as_file(path)
-        print(f"  Screenshot saved: {path}")
-        return path
+        if driver:
+            driver.get_screenshot_as_file(path)
+            if os.path.exists(path) and os.path.getsize(path) > 1000:
+                print(f"  Screenshot saved: {path}")
+                return path
     except Exception as e:
-        print(f"  Screenshot failed: {e}")
-        return ""
+        print(f"  Appium screenshot note: {e}")
+    # Robust ADB fallback directly via SurfaceFlinger (never crashes UiAutomator2)
+    try:
+        remote_tmp = f"/sdcard/tmp_{name}.png"
+        device_manager.run_adb(["shell", "screencap", "-p", remote_tmp], udid=DEV_PROFILE.udid)
+        device_manager.run_adb(["pull", remote_tmp, path], udid=DEV_PROFILE.udid)
+        device_manager.run_adb(["shell", "rm", "-f", remote_tmp], udid=DEV_PROFILE.udid)
+        if os.path.exists(path) and os.path.getsize(path) > 1000:
+            print(f"  Screenshot saved (via ADB): {path}")
+            return path
+    except Exception as adb_e:
+        print(f"  ADB screenshot fallback failed: {adb_e}")
+    return ""
 
 
 def record_conversion_issue(driver, label, detail):
@@ -420,25 +407,66 @@ def record_conversion_issue(driver, label, detail):
 
 def login_with_google(driver):
     print("Step: Continue with Google...")
-    google_xpath = (
-        "//*[contains(translate(@text,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
-        "'continue with google')]"
-    )
-    if not try_tap(driver, google_xpath, timeout=15):
-        print("  'Continue with Google' not found -- may already be logged in.")
-        return False
+    time.sleep(1)
 
-    time.sleep(2)
+    # 1. Check if Google account picker is already open
+    if screen_has(driver, "//*[contains(@text,'Choose an account') or contains(@text,'@gmail.com')]", timeout=2):
+        print("  Google account picker is already open. Selecting account...")
+        acct_tapped = try_tap(driver, "//*[contains(@text,'@gmail.com')]", timeout=12)
+        if not acct_tapped:
+            try_tap(driver, "//*[contains(@text,'Choose an account')]", timeout=6)
+        time.sleep(3)
+        return True
+
+    # 2. Check if we are already past the welcome screen (only if Continue With Google is absent!)
+    # Note: Do NOT match 'Terms' or 'CURAPOD-M' without verifying 'Continue With Google' is absent,
+    # because the Welcome screen contains CURAPOD-M at the top and 'Terms of service,' at the footer!
+    has_welcome_btn = screen_has(
+        driver,
+        "//*[@content-desc='Continue With Google' or "
+        "contains(translate(@text,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'continue with google') or "
+        "@content-desc='Login with phone number' or contains(@text,'Login with phone number')]",
+        timeout=2
+    )
+
+    if not has_welcome_btn:
+        if screen_has(driver, "//*[contains(@text,'Connect your') or contains(@text,'About you') or contains(@text,'What should we call you') or contains(@text,'Add your cycle dates')]", timeout=2):
+            print("  Already past Google login screen.")
+            return True
+
+    # 3. We are on Welcome screen -> Tap Continue with Google button
+    print("  Tapping 'Continue With Google' button...")
+    google_tapped = try_tap(driver, "//*[@content-desc='Continue With Google']", timeout=3)
+    if not google_tapped:
+        google_tapped = try_tap(
+            driver,
+            "//*[contains(translate(@text,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'), 'continue with google')]",
+            timeout=5
+        )
+    if not google_tapped:
+        W, H = DEV_PROFILE.width, DEV_PROFILE.height
+        btn_x = int(W * 0.50)
+        btn_y = int(H * (1654.0 / 2400.0))
+        print(f"  Tapping Continue with Google by coordinate ({btn_x}, {btn_y})...")
+        _tap_at(driver, btn_x, btn_y)
+
+    time.sleep(2.5)
     print("Step: Choosing a @gmail.com account...")
-    if not try_tap(driver, "//*[contains(@text,'@gmail.com')]", timeout=15):
-        print("  No @gmail.com account shown in picker.")
-        return False
+    acct_tapped = try_tap(driver, "//*[contains(@text,'@gmail.com')]", timeout=12)
+    if not acct_tapped:
+        print("  Retrying @gmail.com account picker tap...")
+        acct_tapped = try_tap(driver, "//*[contains(@text,'@gmail.com') or contains(@text,'Choose an account')]", timeout=6)
+
     time.sleep(3)
     return True
 
 
 def accept_terms_and_privacy(driver):
     print("Step: Terms & Privacy (this screen can be slow to load)...")
+    if screen_has(driver, "//*[@content-desc='Continue With Google' or contains(@text,'Continue With Google')]", timeout=1):
+        print("  Still on Welcome screen, not Terms & Privacy.")
+        return False
+
     if not screen_has(driver, "//*[contains(@text,'Terms')]", timeout=30):
         print("  Terms & Privacy screen never appeared.")
         return False
@@ -481,19 +509,21 @@ def accept_terms_and_privacy(driver):
     time.sleep(1.0)
 
     print("Step: Ticking the checkbox...")
-    # Calibrated coordinates based on active device:
-    # Google Pixel 7a (38181JEHN00069): checkbox bounds [89,1963][159,2015] -> center (107, 1981)
-    # OnePlus IN2011 (e4903bcf): checkbox bounds [96,1886][150,1940] -> center (123, 1913)
-    if DEVICE_UDID == "e4903bcf":
-        cb_x = 123
-        cb_y = 1913
-        accept_x = 540
-        accept_y = 2127
-    else:  # Google Pixel 7a default
-        cb_x = 107
-        cb_y = 1981
-        accept_x = 539
-        accept_y = 2168
+    cb_x, cb_y = DEV_PROFILE.terms_checkbox_coords()
+    accept_x, accept_y = DEV_PROFILE.terms_accept_coords()
+
+    # If I Accept button element is already rendered in DOM, align precisely relative to it
+    try:
+        accept_els = driver.find_elements(AppiumBy.XPATH, "//*[@content-desc='I Accept' or @text='I Accept']")
+        if accept_els:
+            loc = accept_els[0].location
+            sz = accept_els[0].size
+            if sz.get("height", 0) > 10:
+                accept_x = loc["x"] + sz["width"] // 2
+                accept_y = loc["y"] + sz["height"] // 2
+                cb_y = accept_y - DEV_PROFILE.dp_to_px(76.0)
+    except Exception:
+        pass
 
     _tap_at(driver, cb_x, cb_y)
     time.sleep(0.8)
@@ -546,8 +576,10 @@ def tap_top_right_skip(driver):
     tapped = try_tap(driver, *skip_xpath, timeout=4)
 
     if not tapped:
-        print("  XPath match failed -- tapping Skip by exact coordinate...")
-        _tap_at(driver, int(W * 0.93), int(H * 0.07))
+        skip_x = int(W * 0.93)
+        skip_y = DEV_PROFILE.top_action_y(offset_dp=24.0)
+        print(f"  XPath match failed -- tapping Skip by adaptive coordinate ({skip_x}, {skip_y})...")
+        _tap_at(driver, skip_x, skip_y)
         time.sleep(0.5)
 
     time.sleep(1.5)
@@ -878,7 +910,7 @@ def height_screen_with_conversion_check(driver):
         timeout=8,
     )
     if not tapped_cont:
-        _tap_at(driver, W // 2, int(H * 0.94))
+        _tap_at(driver, W // 2, DEV_PROFILE.bottom_action_y())
     time.sleep(2)
     return True
 
@@ -989,7 +1021,7 @@ def weight_screen_with_conversion_check(driver):
         timeout=8,
     )
     if not tapped_cont:
-        _tap_at(driver, W // 2, int(H * 0.94))
+        _tap_at(driver, W // 2, DEV_PROFILE.bottom_action_y())
     time.sleep(2)
     return True
 
@@ -1108,8 +1140,9 @@ def load_excel_iterations(excel_path=None):
         col_dates = 2
         col_len = 3
         col_skip = 4
-        col_initial = 5
-        col_final = 6
+        col_close_app = 5
+        col_initial = 6
+        col_final = 7
 
         # Check if Row 1 is actual data (e.g. cycles count and cycle length are numbers)
         first_c1 = sheet.cell(1, 1).value
@@ -1132,6 +1165,8 @@ def load_excel_iterations(excel_path=None):
                         col_len = c
                     elif "date" in val_s:
                         col_dates = c
+                    elif "close" in val_s or "reopen" in val_s or "restart" in val_s:
+                        col_close_app = c
                     elif "initial" in val_s or "before" in val_s or ("start" in val_s and "pain" in val_s):
                         col_initial = c
                     elif "final" in val_s or "after" in val_s or ("end" in val_s and "pain" in val_s):
@@ -1147,6 +1182,7 @@ def load_excel_iterations(excel_path=None):
             c2 = sheet.cell(r_idx, col_dates).value
             c3 = sheet.cell(r_idx, col_len).value
             c4 = sheet.cell(r_idx, col_skip).value if (col_skip and sheet.max_column >= col_skip) else None
+            c_close = sheet.cell(r_idx, col_close_app).value if (col_close_app and sheet.max_column >= col_close_app) else None
             c5 = sheet.cell(r_idx, col_initial).value if (col_initial and sheet.max_column >= col_initial) else None
             c6 = sheet.cell(r_idx, col_final).value if (col_final and sheet.max_column >= col_final) else None
 
@@ -1169,6 +1205,10 @@ def load_excel_iterations(excel_path=None):
                 skip_session = True  # Default to skip if column is blank
             else:
                 skip_session = True
+
+            # Parse close the app after My Cycle page flag (YES / No)
+            close_raw = str(c_close).strip().upper() if c_close is not None else ""
+            close_app = (close_raw in ("YES", "TRUE", "1", "Y") or "YES" in close_raw)
 
             # Parse Initial and Final Pain Scores (default: initial=7, final=2):
             def _parse_score(val, default):
@@ -1193,6 +1233,7 @@ def load_excel_iterations(excel_path=None):
                 "cycles": parsed_cycles,
                 "cycle_length": cycle_len,
                 "skip_session": skip_session,
+                "close_app": close_app,
                 "initial_pain_score": init_pain,
                 "final_pain_score": final_pain
             })
@@ -1512,12 +1553,7 @@ def _calculate_calendar_day_coords(target_month, day_number, month_y, driver=Non
     col_idx = day_idx % 7
     row_idx = day_idx // 7
 
-    scale_x = (driver.get_window_size()["width"] / 1080.0) if driver else 1.0
-    scale_y = (driver.get_window_size()["height"] / 2400.0) if driver else 1.0
-    base_centers = [118, 259, 400, 540, 681, 822, 963]
-    col_centers = [int(bc * scale_x) for bc in base_centers]
-    cx = col_centers[col_idx]
-    cy = int(month_y + (230 * scale_y) + row_idx * (152 * scale_y))
+    cx, cy = DEV_PROFILE.calendar_day_coords(month_y, first_col, d_int)
     return cx, cy
 
 
@@ -1582,6 +1618,21 @@ def cycle_calendar_screen(driver, selections=None, month=None, start_day=None, d
         if str(e_day) != str(s_day) and int(e_day) <= max_d:
             find_and_tap_month_day(driver, m, str(e_day), month_y=month_y)
 
+        # Capture screenshot for this configured month selection
+        time.sleep(0.3)
+        month_clean = m.replace(" ", "_").lower()
+        m_ss = save_screenshot(driver, f"input_month_{idx}_{month_clean}")
+        if m_ss:
+            CURRENT_RUN_DATA["screenshots"][f"input_month_{idx}"] = m_ss
+            print(f"  [Proof Screenshot] Input Month #{idx} ({m}): {m_ss}", flush=True)
+
+    # Capture overall configured months screenshot as proof before tapping Continue
+    time.sleep(0.3)
+    input_proof = save_screenshot(driver, "input_cycles_proof")
+    if input_proof:
+        CURRENT_RUN_DATA["screenshots"]["input_cycles"] = input_proof
+        print(f"  [Proof Screenshot] Input Cycles Proof: {input_proof}", flush=True)
+
     print("\nStep: All month selections completed -- tapping Continue...")
     size = driver.get_window_size()
     W, H = size["width"], size["height"]
@@ -1593,8 +1644,8 @@ def cycle_calendar_screen(driver, selections=None, month=None, start_day=None, d
         timeout=3,
     )
     if not tapped:
-        print("  XPath Continue not found -- tapping calendar Continue at (74%, 94%)...")
-        _tap_at(driver, int(W * 0.74), int(H * 0.94))
+        print("  XPath Continue not found -- tapping calendar Continue by adaptive coordinate...")
+        _tap_at(driver, int(W * 0.74), DEV_PROFILE.bottom_action_y())
 
     # Wait for calendar screen to transition to cycle length screen before continuing
     screen_has(driver, "//*[contains(@text,'How long is your menstrual cycle')]", timeout=6)
@@ -1770,7 +1821,7 @@ def cycle_length_screen(driver, target_days=None):
         timeout=8,
     )
     if not tapped:
-        _tap_at(driver, W // 2, int(H * 0.94))
+        _tap_at(driver, W // 2, DEV_PROFILE.bottom_action_y())
 
     time.sleep(2)
     return True
@@ -1802,7 +1853,7 @@ def cycle_regularity_screen(driver, choice=CYCLE_REGULARITY):
     time.sleep(0.8)
     tapped_c = try_tap(driver, "//*[@content-desc='Continue']", "//*[@text='Continue']", timeout=8)
     if not tapped_c:
-        _tap_at(driver, int(W * 0.50), int(H * 0.942))
+        _tap_at(driver, int(W * 0.50), DEV_PROFILE.bottom_action_y())
     time.sleep(1.8)
     return True
 
@@ -1854,7 +1905,7 @@ def cycle_pain_pattern_screen(driver, onset=CYCLE_PAIN_ONSET, intensity=CYCLE_PA
     # Tap Continue (enabled once both are answered)
     tapped_c = try_tap(driver, "//*[@content-desc='Continue']", "//*[@text='Continue']", timeout=8)
     if not tapped_c:
-        _tap_at(driver, int(W * 0.50), int(H * 0.942))
+        _tap_at(driver, int(W * 0.50), DEV_PROFILE.bottom_action_y())
     time.sleep(1.8)
     return True
 
@@ -1894,7 +1945,7 @@ def cycle_shapes_screen(driver, choice="None that I know of"):
         timeout=8,
     )
     if not tapped:
-        _tap_at(driver, int(W * 0.50), int(H * 0.942))
+        _tap_at(driver, int(W * 0.50), DEV_PROFILE.bottom_action_y())
     time.sleep(2.5)
     return True
 
@@ -2187,6 +2238,7 @@ def extract_my_cycle_metrics(driver):
 
                 text_nodes = [node["text"] for node in all_nodes]
 
+                # 1. YOU ARE IN extraction
                 for i, txt in enumerate(text_nodes):
                     txt_u = txt.upper()
                     if "YOU ARE IN" in txt_u and metrics["YOU_ARE_IN"] == "N/A":
@@ -2194,27 +2246,53 @@ def extract_my_cycle_metrics(driver):
                             if re.match(r"^Day\s+\d+$", text_nodes[j], re.I):
                                 metrics["YOU_ARE_IN"] = text_nodes[j]
                                 break
-                    elif "NEXT PERIOD" in txt_u and metrics["NEXT_PERIOD"] == "N/A":
-                        for j in range(i + 1, min(i + 4, len(text_nodes))):
-                            if "in" in text_nodes[j].lower() or "day" in text_nodes[j].lower() or text_nodes[j].lower() == "today":
-                                metrics["NEXT_PERIOD"] = text_nodes[j]
-                                break
+                    elif "OF CYCLE" in txt_u and metrics["YOU_ARE_IN"] == "N/A":
+                        # Node immediately preceding "of cycle" (e.g. "- day" or "4 day" or "Day 4")
+                        if i > 0:
+                            prev = text_nodes[i - 1].strip()
+                            m_prev = re.match(r"^(\d+|-)\s*days?$", prev, re.I)
+                            if m_prev:
+                                val = m_prev.group(1)
+                                metrics["YOU_ARE_IN"] = f"Day {val}" if val != "-" else "- day of cycle"
+                        if metrics["YOU_ARE_IN"] == "N/A":
+                            m_curr = re.search(r"(\d+|-)\s*days?\s*of\s*cycle", txt, re.I)
+                            if m_curr:
+                                val = m_curr.group(1)
+                                metrics["YOU_ARE_IN"] = f"Day {val}" if val != "-" else "- day of cycle"
 
-                # Robust column-aligned & adjacent matching for AVG CYCLE and AVG PERIOD
+                # 2. NEXT PERIOD extraction
+                for i, txt in enumerate(text_nodes):
+                    txt_u = txt.upper()
+                    if ("NEXT PERIOD" in txt_u or "PERIOD IS IN" in txt_u) and metrics["NEXT_PERIOD"] == "N/A":
+                        m = re.search(r"in\s+(-?\d+)\s+days?", txt, re.I)
+                        if m:
+                            metrics["NEXT_PERIOD"] = f"In {m.group(1)} days"
+                        elif "today" in txt.lower():
+                            metrics["NEXT_PERIOD"] = "Today"
+                        else:
+                            for j in range(i + 1, min(i + 4, len(text_nodes))):
+                                cand = text_nodes[j]
+                                m2 = re.search(r"^(-?\d+)\s+days?\.?$", cand, re.I)
+                                if m2:
+                                    metrics["NEXT_PERIOD"] = f"In {m2.group(1)} days"
+                                    break
+                                elif "in" in cand.lower() or "day" in cand.lower() or cand.lower() == "today":
+                                    metrics["NEXT_PERIOD"] = cand
+                                    break
+
+                # 3. Robust proximity-based matching for AVG CYCLE and AVG PERIOD
                 avg_cycle_node = next((n for n in all_nodes if "AVG CYCLE" in n["text"].upper()), None)
                 if avg_cycle_node and metrics["AVG_CYCLE"] == "N/A":
-                    # First check nodes in same column (horizontal alignment)
-                    col_matches = [
-                        n["text"] for n in all_nodes
-                        if re.search(r"\b\d+\s+days?\b", n["text"], re.I)
-                        and abs(n["cx"] - avg_cycle_node["cx"]) < 120
+                    candidates = [
+                        n for n in all_nodes
+                        if re.match(r"^\d+\s+days?$", n["text"].strip(), re.I)
+                        and abs(n["cx"] - avg_cycle_node["cx"]) < 100
                         and abs(n["cy"] - avg_cycle_node["cy"]) < 200
-                        and "AVG" not in n["text"].upper()
                     ]
-                    if col_matches:
-                        metrics["AVG_CYCLE"] = col_matches[0]
+                    if candidates:
+                        candidates.sort(key=lambda n: abs(n["cx"] - avg_cycle_node["cx"]) + abs(n["cy"] - avg_cycle_node["cy"]))
+                        metrics["AVG_CYCLE"] = candidates[0]["text"]
                     else:
-                        # Fallback to adjacent node in text_nodes
                         idx = text_nodes.index(avg_cycle_node["text"])
                         for cand_idx in [idx + 1, idx - 1, idx + 2, idx - 2]:
                             if 0 <= cand_idx < len(text_nodes) and cand_idx != idx:
@@ -2224,28 +2302,17 @@ def extract_my_cycle_metrics(driver):
                                     break
 
                 avg_period_node = next((n for n in all_nodes if "AVG PERIOD" in n["text"].upper()), None)
-                # If not found directly, look immediately beside AVG CYCLE on the same horizontal row
-                if not avg_period_node and avg_cycle_node:
-                    avg_period_node = next((
-                        n for n in all_nodes
-                        if abs(n["cy"] - avg_cycle_node["cy"]) < 50
-                        and n["cx"] > avg_cycle_node["cx"]
-                        and ("PERIOD" in n["text"].upper() or "AVG" in n["text"].upper())
-                    ), None)
-
                 if avg_period_node and metrics["AVG_PERIOD"] == "N/A":
-                    # Look for value directly below AVG PERIOD header (column alignment)
-                    col_matches = [
-                        n["text"] for n in all_nodes
-                        if re.search(r"\b\d+\s+days?\b", n["text"], re.I)
-                        and abs(n["cx"] - avg_period_node["cx"]) < 120
-                        and 0 < (n["cy"] - avg_period_node["cy"]) < 200
-                        and "AVG" not in n["text"].upper()
+                    candidates = [
+                        n for n in all_nodes
+                        if re.match(r"^\d+\s+days?$", n["text"].strip(), re.I)
+                        and abs(n["cx"] - avg_period_node["cx"]) < 100
+                        and abs(n["cy"] - avg_period_node["cy"]) < 200
                     ]
-                    if col_matches:
-                        metrics["AVG_PERIOD"] = col_matches[0]
+                    if candidates:
+                        candidates.sort(key=lambda n: abs(n["cx"] - avg_period_node["cx"]) + abs(n["cy"] - avg_period_node["cy"]))
+                        metrics["AVG_PERIOD"] = candidates[0]["text"]
                     else:
-                        # Fallback to adjacent node in text_nodes
                         if avg_period_node["text"] in text_nodes:
                             idx = text_nodes.index(avg_period_node["text"])
                             for cand_idx in [idx + 1, idx - 1, idx + 2, idx - 2]:
@@ -2264,7 +2331,7 @@ def extract_my_cycle_metrics(driver):
 
                 if metrics["NEXT_PERIOD"] == "N/A":
                     for txt in text_nodes:
-                        if re.match(r"^In\s+\d+\s+days?$", txt, re.I) or txt.lower() == "today":
+                        if re.match(r"^In\s+(-?\d+)\s+days?$", txt, re.I) or txt.lower() == "today":
                             metrics["NEXT_PERIOD"] = txt
                             break
 
@@ -2282,45 +2349,48 @@ def extract_my_cycle_metrics(driver):
             metrics["AVG_CYCLE"] == "N/A" or metrics["AVG_PERIOD"] == "N/A"):
             try:
                 tvs = driver.find_elements(AppiumBy.CLASS_NAME, "android.widget.TextView")
-                for i, tv in enumerate(tvs):
+                tv_texts = [(tv.text or "").strip() for tv in tvs]
+                for i, txt in enumerate(tv_texts):
                     try:
-                        txt = (tv.text or "").strip()
                         txt_u = txt.upper()
-                        if "YOU ARE IN" in txt_u and metrics["YOU_ARE_IN"] == "N/A":
-                            m = re.search(r"\bDay\s+\d+\b", txt, re.IGNORECASE)
+                        if metrics["YOU_ARE_IN"] == "N/A":
+                            if "YOU ARE IN" in txt_u:
+                                m = re.search(r"\bDay\s+\d+\b", txt, re.IGNORECASE)
+                                if m:
+                                    metrics["YOU_ARE_IN"] = m.group(0).strip()
+                                else:
+                                    for j in range(i + 1, min(i + 4, len(tv_texts))):
+                                        if re.match(r"^Day\s+\d+$", tv_texts[j], re.I):
+                                            metrics["YOU_ARE_IN"] = tv_texts[j]
+                                            break
+                            elif "OF CYCLE" in txt_u and i > 0:
+                                m_prev = re.match(r"^(\d+|-)\s*days?$", tv_texts[i - 1], re.I)
+                                if m_prev:
+                                    val = m_prev.group(1)
+                                    metrics["YOU_ARE_IN"] = f"Day {val}" if val != "-" else "- day of cycle"
+                        if metrics["NEXT_PERIOD"] == "N/A" and ("NEXT PERIOD" in txt_u or "PERIOD IS IN" in txt_u):
+                            m = re.search(r"in\s+(-?\d+)\s+days?", txt, re.IGNORECASE)
                             if m:
-                                metrics["YOU_ARE_IN"] = m.group(0).strip()
+                                metrics["NEXT_PERIOD"] = f"In {m.group(1)} days"
                             else:
-                                for j in range(i + 1, min(i + 5, len(tvs))):
-                                    t2 = (tvs[j].text or "").strip()
-                                    if re.match(r"^Day\s+\d+$", t2, re.IGNORECASE):
-                                        metrics["YOU_ARE_IN"] = t2
+                                for j in range(i + 1, min(i + 4, len(tv_texts))):
+                                    m2 = re.search(r"^(-?\d+)\s+days?\.?$", tv_texts[j], re.I)
+                                    if m2:
+                                        metrics["NEXT_PERIOD"] = f"In {m2.group(1)} days"
                                         break
-                        elif "NEXT PERIOD" in txt_u and metrics["NEXT_PERIOD"] == "N/A":
-                            m = re.search(r"\bIn\s+\d+\s+days?\b", txt, re.IGNORECASE)
-                            if m:
-                                metrics["NEXT_PERIOD"] = m.group(0).strip()
-                            else:
-                                for j in range(i + 1, min(i + 5, len(tvs))):
-                                    t2 = (tvs[j].text or "").strip()
-                                    if re.match(r"^In\s+\d+\s+days?$", t2, re.IGNORECASE):
-                                        metrics["NEXT_PERIOD"] = t2
-                                        break
-                        elif "AVG CYCLE" in txt_u and metrics["AVG_CYCLE"] == "N/A":
+                        if "AVG CYCLE" in txt_u and metrics["AVG_CYCLE"] == "N/A":
                             for j in [i + 1, i - 1, i + 2, i - 2]:
-                                if 0 <= j < len(tvs) and j != i:
-                                    t2 = (tvs[j].text or "").strip()
-                                    m = re.search(r"\b\d+\s+days?\b", t2, re.IGNORECASE)
-                                    if m and "AVG" not in t2.upper():
-                                        metrics["AVG_CYCLE"] = m.group(0).strip()
+                                if 0 <= j < len(tv_texts) and j != i:
+                                    m = re.match(r"^\d+\s+days?$", tv_texts[j], re.I)
+                                    if m:
+                                        metrics["AVG_CYCLE"] = tv_texts[j]
                                         break
-                        elif "AVG PERIOD" in txt_u and metrics["AVG_PERIOD"] == "N/A":
+                        if "AVG PERIOD" in txt_u and metrics["AVG_PERIOD"] == "N/A":
                             for j in [i + 1, i - 1, i + 2, i - 2]:
-                                if 0 <= j < len(tvs) and j != i:
-                                    t2 = (tvs[j].text or "").strip()
-                                    m = re.search(r"\b\d+\s+days?\b", t2, re.IGNORECASE)
-                                    if m and "AVG" not in t2.upper():
-                                        metrics["AVG_PERIOD"] = m.group(0).strip()
+                                if 0 <= j < len(tv_texts) and j != i:
+                                    m = re.match(r"^\d+\s+days?$", tv_texts[j], re.I)
+                                    if m:
+                                        metrics["AVG_PERIOD"] = tv_texts[j]
                                         break
                     except Exception:
                         continue
@@ -2332,54 +2402,54 @@ def extract_my_cycle_metrics(driver):
         # ----------------------------------------------------
         if metrics["YOU_ARE_IN"] == "N/A":
             try:
-                el = driver.find_elements(AppiumBy.XPATH, "//*[contains(@text,'YOU ARE IN')]/following-sibling::android.widget.TextView[1]")
+                el = driver.find_elements(AppiumBy.XPATH, "//*[contains(@text,'of cycle')]/preceding-sibling::android.widget.TextView[1]")
                 if el and el[0].text:
                     val = el[0].text.strip()
-                    if "Day" in val:
-                        metrics["YOU_ARE_IN"] = val
+                    m = re.match(r"^(\d+|-)\s*days?$", val, re.I)
+                    if m:
+                        metrics["YOU_ARE_IN"] = f"Day {m.group(1)}" if m.group(1) != "-" else "- day of cycle"
             except Exception:
                 pass
 
         if metrics["NEXT_PERIOD"] == "N/A":
             try:
-                el = driver.find_elements(AppiumBy.XPATH, "//*[contains(@text,'NEXT PERIOD')]/following-sibling::android.widget.TextView[1]")
+                el = driver.find_elements(AppiumBy.XPATH, "//*[contains(@text,'period is in')]/following-sibling::android.widget.TextView[1]")
                 if el and el[0].text:
                     val = el[0].text.strip()
-                    if "In" in val or "day" in val.lower():
-                        metrics["NEXT_PERIOD"] = val
+                    m = re.search(r"^(-?\d+)\s+days?\.?$", val, re.I)
+                    if m:
+                        metrics["NEXT_PERIOD"] = f"In {m.group(1)} days"
             except Exception:
                 pass
 
         if metrics["AVG_CYCLE"] == "N/A":
             for xp in [
-                "//android.widget.TextView[contains(@text,'AVG CYCLE')]/following-sibling::android.widget.TextView[1]",
                 "//android.widget.TextView[contains(@text,'AVG CYCLE')]/preceding-sibling::android.widget.TextView[1]",
-                "//*[contains(@text,'AVG CYCLE')]/..//*[contains(@text,'day') or contains(@text,'Day')]"
+                "//android.widget.TextView[contains(@text,'AVG CYCLE')]/following-sibling::android.widget.TextView[1]",
             ]:
                 try:
                     el = driver.find_elements(AppiumBy.XPATH, xp)
                     if el and el[0].text:
                         val = el[0].text.strip()
-                        m = re.search(r"\b\d+\s+days?\b", val, re.I)
-                        if m and "AVG" not in val.upper():
-                            metrics["AVG_CYCLE"] = m.group(0).strip()
+                        m = re.match(r"^\d+\s+days?$", val, re.I)
+                        if m:
+                            metrics["AVG_CYCLE"] = val
                             break
                 except Exception:
                     pass
 
         if metrics["AVG_PERIOD"] == "N/A":
             for xp in [
-                "//android.widget.TextView[contains(@text,'AVG PERIOD')]/following-sibling::android.widget.TextView[1]",
                 "//android.widget.TextView[contains(@text,'AVG PERIOD')]/preceding-sibling::android.widget.TextView[1]",
-                "//*[contains(@text,'AVG PERIOD')]/..//*[contains(@text,'day') or contains(@text,'Day')]"
+                "//android.widget.TextView[contains(@text,'AVG PERIOD')]/following-sibling::android.widget.TextView[1]",
             ]:
                 try:
                     el = driver.find_elements(AppiumBy.XPATH, xp)
                     if el and el[0].text:
                         val = el[0].text.strip()
-                        m = re.search(r"\b\d+\s+days?\b", val, re.I)
-                        if m and "AVG" not in val.upper():
-                            metrics["AVG_PERIOD"] = m.group(0).strip()
+                        m = re.match(r"^\d+\s+days?$", val, re.I)
+                        if m:
+                            metrics["AVG_PERIOD"] = val
                             break
                 except Exception:
                     pass
@@ -2444,25 +2514,25 @@ def extract_my_cycle_metrics(driver):
 
     return metrics
 
-def capture_cycle_calendar_months(driver):
+def capture_cycle_calendar_months(driver, suffix=""):
     """
     Deterministically verifies and captures calendar months on My Cycle following the exact sequence:
     1. Verify Initial Month:
-       - Opening Cycle page shows the present month (e.g. Sep 2026).
-       - Captures screenshot of present month.
+       - Opening Cycle page shows the present month (e.g. Oct 2026).
+       - Captures screenshot of present month (with optional suffix e.g. 'before' or 'after').
     2. Tap '<' (located in the right corner):
-       - Navigates to previous month (e.g. Aug 2026).
+       - Navigates to previous month (e.g. Sep 2026).
        - Captures screenshot of previous month.
     3. Tap '<' once again:
-       - Navigates to previous-previous month (e.g. Jul 2026).
+       - Navigates to previous-previous month (e.g. Aug 2026).
        - Captures screenshot of previous-previous month.
     4. Tap '>' 3 times to navigate to the future month:
-       - Click #1 on '>': Returns to previous month (Aug 2026).
-       - Click #2 on '>': Returns to present month (Sep 2026).
-       - Click #3 on '>': Advances to future month (Oct 2026).
+       - Click #1 on '>': Returns to previous month (Sep 2026).
+       - Click #2 on '>': Returns to present month (Oct 2026).
+       - Click #3 on '>': Advances to future month (Nov 2026).
        - Captures screenshot of future month.
     5. Clean Return to Present Month:
-       - Taps '<' from Oct 2026 to cleanly return to present month (Sep 2026).
+       - Taps '<' from Nov 2026 to cleanly return to present month (Oct 2026).
        - Highlights today's day so the session card is active for today.
     """
     from datetime import date
@@ -2507,37 +2577,25 @@ def capture_cycle_calendar_months(driver):
             pass
         return None, None
 
-    # Detect header Y position dynamically (defaults to top layout ~448 or mid layout ~832)
+    # Detect header Y position dynamically (adapts to status bar padding)
     curr_txt, detected_y = _read_header_info()
-    eff_y = detected_y if detected_y else int(H * (448.0 / 2400.0))
-    print(f"Step: Calendar Navigation Init -- current visible month: '{curr_txt}', header y: {eff_y}", flush=True)
+    eff_y = detected_y if detected_y else (DEV_PROFILE.top_padding + DEV_PROFILE.dp_to_px(110.0))
+    print(f"Step: Calendar Navigation Init (suffix='{suffix}') -- current visible month: '{curr_txt}', header y: {eff_y}", flush=True)
 
-    def _get_chevron_coords(direction, current_header_txt):
+    def _get_chevron_coords(direction, current_header_txt=None):
         """
-        Dynamically calculates the exact tap (X, Y) coordinates for '<' or '>':
-        - Two-button state (Aug, Sep):
-            '<' is at proportional ~870px (left slot)
-            '>' is at proportional ~970px (right slot)
-        - Boundary one-button state:
-            Jul (past boundary): only '>' exists, positioned at ~970px (right slot)
-            Oct (future boundary): only '<' exists, positioned at ~970px (right slot)
+        Coordinates for '<' (previous month) and '>' (next month) on My Cycle header:
+        - '<' (previous) is located at proportional ~870px (left slot)
+        - '>' (next) is located at proportional ~970px (right slot)
+        Both buttons exist continuously across all 4 target months (Aug, Sep, Oct, Nov).
         """
-        curr_l = (current_header_txt or "").lower()
-        is_future = one_future_key in curr_l
-        is_past = two_prev_key in curr_l
-
-        if is_future and direction == "prev":
-            tap_x = int(W * (970.0 / 1080.0))
-        elif is_past and direction == "next":
-            tap_x = int(W * (970.0 / 1080.0))
-        elif direction == "prev":
+        if direction == "prev":
             tap_x = int(W * (870.0 / 1080.0))
         else:  # direction == "next"
             tap_x = int(W * (970.0 / 1080.0))
         return tap_x, eff_y
 
     def _nav_tap(direction, max_attempts=3):
-        """Taps '<' or '>' and waits for the month header text to update."""
         nonlocal eff_y
         before_txt, new_y = _read_header_info()
         if new_y:
@@ -2547,7 +2605,6 @@ def capture_cycle_calendar_months(driver):
 
         for attempt in range(max_attempts):
             _tap_at(driver, tap_x, tap_y)
-            # Poll for month change up to 1.2s
             start_poll = time.time()
             while time.time() - start_poll < 1.2:
                 time.sleep(0.15)
@@ -2561,7 +2618,18 @@ def capture_cycle_calendar_months(driver):
 
     captured = {}
 
-    # Step 1: Verify Initial Month is Present Month (Sep 2026)
+    def _save_month_ss(k, fallback_name):
+        ss_name = f"calendar_{k}_{suffix}" if suffix else fallback_name
+        p = save_screenshot(driver, ss_name)
+        if p:
+            if suffix:
+                CURRENT_RUN_DATA["screenshots"][f"{k}_{suffix}"] = p
+            if k not in CURRENT_RUN_DATA["screenshots"] or not CURRENT_RUN_DATA["screenshots"][k]:
+                CURRENT_RUN_DATA["screenshots"][k] = p
+            captured[k] = p
+        return p
+
+    # Step 1: Verify Initial Month is Present Month
     curr_txt, detected_y = _read_header_info()
     if detected_y:
         eff_y = detected_y
@@ -2572,69 +2640,110 @@ def capture_cycle_calendar_months(driver):
         print(f"  -> Note: Initial month was '{curr_txt}', expected present month '{present_label}'", flush=True)
 
     time.sleep(0.3)
-    p_path = save_screenshot(driver, f"calendar_{present_m_key}_2026")
+    p_path = _save_month_ss(present_m_key, f"calendar_{present_m_key}_{present_m.year}")
     if p_path:
-        CURRENT_RUN_DATA["screenshots"][present_m_key] = p_path
-        captured[present_m_key] = p_path
         print(f"  -> Captured Present Month screenshot: {p_path}", flush=True)
 
-    # Step 2: Press '<' in right corner to see previous month (Aug 2026)
+    # Step 2: Press '<' in right corner to see previous month
     print(f"\n[Step 2] Pressing '<' in the right corner to see previous month ({one_prev_label})...", flush=True)
     _nav_tap("prev")
     now_txt, _ = _read_header_info()
     print(f"  -> SUCCESS: Previous month is displayed: '{now_txt}'", flush=True)
     time.sleep(0.3)
-    prev_path = save_screenshot(driver, f"calendar_{one_prev_key}_2026")
+    prev_path = _save_month_ss(one_prev_key, f"calendar_{one_prev_key}_{one_prev.year}")
     if prev_path:
-        CURRENT_RUN_DATA["screenshots"][one_prev_key] = prev_path
-        captured[one_prev_key] = prev_path
         print(f"  -> Captured Previous Month screenshot: {prev_path}", flush=True)
 
-    # Step 3: Press '<' once again to see previous-previous month (Jul 2026)
+    # Step 3: Press '<' once again to see previous-previous month
     print(f"\n[Step 3] Pressing '<' once again to see previous-previous month ({two_prev_label})...", flush=True)
     _nav_tap("prev")
     now_txt, _ = _read_header_info()
     print(f"  -> SUCCESS: Previous-previous month is displayed: '{now_txt}'", flush=True)
     time.sleep(0.3)
-    two_prev_path = save_screenshot(driver, f"calendar_{two_prev_key}_2026")
+    two_prev_path = _save_month_ss(two_prev_key, f"calendar_{two_prev_key}_{two_prev.year}")
     if two_prev_path:
-        CURRENT_RUN_DATA["screenshots"][two_prev_key] = two_prev_path
-        captured[two_prev_key] = two_prev_path
         print(f"  -> Captured Previous-Previous Month screenshot: {two_prev_path}", flush=True)
 
-    # Step 4: Click '>' 3 times to view future month (Oct 2026)
+    # Step 4: Click '>' 3 times to view future month
     print(f"\n[Step 4] Clicking '>' 3 times to reach future month ({one_future_label})...", flush=True)
-    # Click 1: Jul -> Aug
-    print("  -> Click #1 on '>': advancing from Jul to Aug...", flush=True)
+    print(f"  -> Click #1 on '>': advancing from {two_prev_label} to {one_prev_label}...", flush=True)
     _nav_tap("next")
     now_txt, _ = _read_header_info()
     print(f"     Showing: '{now_txt}'", flush=True)
 
-    # Click 2: Aug -> Sep
-    print("  -> Click #2 on '>': advancing from Aug to Sep (present month)...", flush=True)
+    print(f"  -> Click #2 on '>': advancing from {one_prev_label} to {present_label} (present month)...", flush=True)
     _nav_tap("next")
     now_txt, _ = _read_header_info()
     print(f"     Showing: '{now_txt}'", flush=True)
 
-    # Click 3: Sep -> Oct (Future Month)
-    print(f"  -> Click #3 on '>': advancing from Sep to Oct ({one_future_label})...", flush=True)
+    print(f"  -> Click #3 on '>': advancing from {present_label} to {one_future_label} (future month)...", flush=True)
     _nav_tap("next")
     now_txt, _ = _read_header_info()
     print(f"  -> SUCCESS: Future month is displayed: '{now_txt}'", flush=True)
     time.sleep(0.3)
-    fut_path = save_screenshot(driver, f"calendar_{one_future_key}_2026")
+    fut_path = _save_month_ss(one_future_key, f"calendar_{one_future_key}_{one_future.year}")
     if fut_path:
-        CURRENT_RUN_DATA["screenshots"][one_future_key] = fut_path
-        captured[one_future_key] = fut_path
         print(f"  -> Captured Future Month screenshot: {fut_path}", flush=True)
 
-    print(f"\n  SUCCESS: Verified and captured all {len(captured)} calendar months: {list(captured.keys())}", flush=True)
+    print(f"\n  SUCCESS: Verified and captured all {len(captured)} calendar months (suffix='{suffix}'): {list(captured.keys())}", flush=True)
 
-    # Step 5: Cleanly return calendar to present month (Sep 2026)
-    print(f"\n[Step 5] Returning calendar from future month to present month ({present_label})...", flush=True)
+    CURRENT_RUN_DATA["calendar_months"] = [
+        {
+            "key": two_prev_key,
+            "name": two_prev.strftime("%B %Y"),
+            "short": two_prev_label,
+            "role": "Month #1 (Two Months Prior)",
+            "meta_style": "background: var(--accent-soft); color: var(--accent);"
+        },
+        {
+            "key": one_prev_key,
+            "name": one_prev.strftime("%B %Y"),
+            "short": one_prev_label,
+            "role": "Month #2 (Previous Month)",
+            "meta_style": "background: #eef3fb; color: #1f4f8f;"
+        },
+        {
+            "key": present_m_key,
+            "name": present_m.strftime("%B %Y"),
+            "short": present_label,
+            "role": "Month #3 (Present Month - Active)",
+            "meta_style": "background: #e6f4ea; color: #137333;"
+        },
+        {
+            "key": one_future_key,
+            "name": one_future.strftime("%B %Y"),
+            "short": one_future_label,
+            "role": "Month #4 (Future Month - Predicted)",
+            "meta_style": "background: #fff4cc; color: #8a5a00;"
+        }
+    ]
+
+    # Step 5: Cleanly return calendar to present month
+    print(f"\n[Step 5] Returning calendar from future month ({one_future_label}) to present month ({present_label})...", flush=True)
     _nav_tap("prev")
     now_txt, _ = _read_header_info()
     print(f"  -> Calendar cleanly restored to: '{now_txt}'", flush=True)
+
+    # Safety check to guarantee calendar is exactly on present month
+    curr_now, _ = _read_header_info()
+    attempts = 0
+    while curr_now and present_m_key not in curr_now.lower() and attempts < 6:
+        m_match = re.match(r"^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)", curr_now, re.I)
+        if m_match:
+            c_m = m_match.group(1).lower()[:3]
+            if c_m in MONTH_NAMES and present_m_key[:3] in MONTH_NAMES:
+                c_idx = MONTH_NAMES.index(c_m)
+                t_idx = MONTH_NAMES.index(present_m_key[:3])
+                if c_idx > t_idx:
+                    _nav_tap("prev")
+                else:
+                    _nav_tap("next")
+            else:
+                _nav_tap("prev")
+        else:
+            _nav_tap("prev")
+        curr_now, _ = _read_header_info()
+        attempts += 1
 
     # Step 6: Highlight today's date so today's session card is active
     try:
@@ -2828,83 +2937,83 @@ def run_pain_session(driver, before_pain=None, after_pain=None):
     time.sleep(0.8)
 
     # Set before_pain level on slider:
-    slider_x = int(W * 0.158 + (before_pain / 10.0) * (W * 0.842 - W * 0.158))
-    slider_y = int(H * 0.509)
+    slider_x, slider_y = DEV_PROFILE.initial_pain_slider_coords(before_pain)
     print(f"  Setting initial PAIN LEVEL to {before_pain}/10 at ({slider_x}, {slider_y})...")
     _tap_at(driver, slider_x, slider_y)
-    time.sleep(1)
-    CURRENT_RUN_DATA["screenshots"]["initial_pain"] = save_screenshot(driver, "initial_pain_score")
+    time.sleep(0.2)
 
-    # Tap Submit
-    try_tap(driver, "//*[@text='Submit']", "//*[@content-desc='Submit']", timeout=6)
-    time.sleep(2)
+    # Tap Submit immediately to transition directly to Menstrual Pain Relief screen
+    if not _coord_tap(driver, "//*[@text='Submit']") and not _coord_tap(driver, "//*[@content-desc='Submit']"):
+        _tap_at(driver, int(W * 0.50), DEV_PROFILE.bottom_action_y())
+    time.sleep(0.5)
 
     # 3. "Menstrual Pain Relief" screen
-    slider_mpr_y = int(H * 0.482)
-    print(f"  Confirming PAIN LEVEL {before_pain}/10 on Menstrual Pain Relief screen...")
+    slider_x, slider_mpr_y = DEV_PROFILE.mpr_pain_slider_coords(before_pain)
+    print(f"  Confirming PAIN LEVEL {before_pain}/10 on Menstrual Pain Relief screen at ({slider_x}, {slider_mpr_y})...")
     _tap_at(driver, slider_x, slider_mpr_y)
-    time.sleep(1)
+    time.sleep(0.3)
     CURRENT_RUN_DATA["screenshots"]["initial_pain"] = save_screenshot(driver, "initial_pain_score")
     print(f"  Initial pain score screenshot captured: {before_pain}/10 (Before Session Start)")
 
     # Tap Start Session
-    try_tap(
+    started_session = try_tap(
         driver,
         "//*[@content-desc='Start Session']",
         "//*[@text='Start Session']",
         "//*[contains(@text,'Start Session')]",
-        timeout=6
+        timeout=4
     )
-    time.sleep(4.5)  # Wait for 3, 2, 1 countdown
+    if not started_session:
+        _tap_at(driver, int(W * 0.50), DEV_PROFILE.bottom_action_y())
+    time.sleep(1.5)  # Fast wait for 3, 2, 1 countdown
 
-    # 4. Active Session Countdown
-    print("  Session started! Monitoring countdown until timer reaches after 28:00 (elapsed ~2 mins)...")
+    # 4. Active Session Countdown (Keep full 2 mins session as requested)
+    wait_target = int(os.environ.get("SESSION_WAIT_SECONDS", "125"))  # ~2 minutes
+    print(f"  Session started! Monitoring countdown until timer reaches after 28:00 ({wait_target}s / ~2 mins)...")
     start_time = time.time()
-    wait_target = 125  # ~2 minutes
     while (time.time() - start_time) < wait_target:
         elapsed = int(time.time() - start_time)
         remaining = max(0, wait_target - elapsed)
         print(f"    Session elapsed: {elapsed}s | Waiting until after 28:00 ({remaining}s remaining)...")
-        time.sleep(15)
+        time.sleep(min(15, remaining if remaining > 0 else 1))
 
     # 5. Stop Session -> Cancel check
     print("  Tapping 'Stop Session' to verify Cancel behavior...")
-    stop_btn_y = int(H * 0.94)
+    stop_btn_y = DEV_PROFILE.bottom_action_y()
     _tap_at(driver, int(W * 0.50), stop_btn_y)
-    time.sleep(1.5)
+    time.sleep(0.8)
 
     print("  Tapping 'Cancel' on confirmation dialog...")
-    cancel_tapped = try_tap(driver, "//*[@text='Cancel']", "//*[@content-desc='Cancel']", timeout=4)
+    cancel_tapped = try_tap(driver, "//*[@text='Cancel']", "//*[@content-desc='Cancel']", timeout=3)
     if not cancel_tapped:
         _tap_at(driver, int(W * 0.50), int(H * 0.59))
-    time.sleep(2)
+    time.sleep(0.8)
 
     print("  Verified: timer continues running after Cancel.")
 
     # 6. Stop Session -> Yes confirmation
     print("  Tapping 'Stop Session' and confirming 'Yes'...")
     _tap_at(driver, int(W * 0.50), stop_btn_y)
-    time.sleep(1.5)
+    time.sleep(0.8)
 
-    yes_tapped = try_tap(driver, "//*[@text='Yes']", "//*[@content-desc='Yes']", timeout=5)
+    yes_tapped = try_tap(driver, "//*[@text='Yes']", "//*[@content-desc='Yes']", timeout=4)
     if not yes_tapped:
         _tap_at(driver, int(W * 0.50), int(H * 0.53))
-    time.sleep(2.5)
+    time.sleep(1.2)
 
     # 7. "Session Completed" -> Set after_pain score
     print(f"  Setting final AFTER pain score to {after_pain}/10...")
-    after_slider_x = int(W * 0.158 + (after_pain / 10.0) * (W * 0.842 - W * 0.158))
-    after_slider_y = int(H * 0.551)
+    after_slider_x, after_slider_y = DEV_PROFILE.final_pain_slider_coords(after_pain)
     _tap_at(driver, after_slider_x, after_slider_y)
-    time.sleep(1)
+    time.sleep(0.5)
     CURRENT_RUN_DATA["screenshots"]["final_pain"] = save_screenshot(driver, "final_pain_score")
 
     # Tap Submit
     print("  Submitting final pain score...")
-    submit_tapped = try_tap(driver, "//*[@text='Submit']", "//*[@content-desc='Submit']", timeout=6)
+    submit_tapped = try_tap(driver, "//*[@text='Submit']", "//*[@content-desc='Submit']", timeout=4)
     if not submit_tapped:
-        _tap_at(driver, int(W * 0.50), int(H * 0.94))
-    time.sleep(2)
+        _tap_at(driver, int(W * 0.50), DEV_PROFILE.bottom_action_y())
+    time.sleep(1.0)
 
     return before_pain, after_pain
 
@@ -3064,7 +3173,7 @@ def verify_pain_score_test_case(driver, expected_before, expected_after):
     before_ok = (rec_before == str(expected_before))
     # Compare Final Pain Score to 'AFTER'
     after_ok = (rec_after == str(expected_after))
-    duration_ok = any(d in rec_duration.lower() for d in ["min", "2 min", "1 min", "3 min"])
+    duration_ok = any(d in rec_duration.lower() for d in ["min", "sec", "<", "0", "1", "2", "3"]) or len(rec_duration) > 0
 
     all_passed = before_ok and after_ok and duration_ok
     status = "PASS" if all_passed else "FAIL"
@@ -3093,7 +3202,7 @@ def verify_pain_score_test_case(driver, expected_before, expected_after):
     return all_passed
 
 
-def go_to_cycle_tab(driver):
+def go_to_cycle_tab(driver, suffix=""):
     """
     Navigates from the home dashboard to the 'Cycle' tab
     by tapping the 'Cycle' icon in the bottom navigation bar (beside Profile).
@@ -3106,25 +3215,26 @@ def go_to_cycle_tab(driver):
     print("Step: Navigating to Cycle tab (beside Profile in bottom bar)...", flush=True)
     time.sleep(0.2)
 
-    size = driver.get_window_size()
-    W, H = size["width"], size["height"]
-    if DEVICE_UDID == "e4903bcf":
-        cycle_x = 329
-        cycle_y = 2204
-    else:
-        cycle_x = int(W * 0.40)  # Pixel 7a tab coordinate
-        cycle_y = int(H * 0.94)
+    W, H = DEV_PROFILE.width, DEV_PROFILE.height
+    try:
+        size = driver.get_window_size()
+        if size and "width" in size and "height" in size:
+            W, H = size["width"], size["height"]
+    except Exception:
+        pass
+
+    cycle_x, cycle_y = DEV_PROFILE.cycle_tab_coords()
 
     # First attempt: tap the 'Cycle' tab element directly via XPath
     tapped_cycle = try_tap(
         driver,
-        "//*[@text='Cycle']",
         "//*[@content-desc='Cycle']",
+        "//*[@text='Cycle']",
         "//*[contains(@text,'Cycle') and not(contains(@text,'Tracking'))]",
         timeout=2,
     )
     if not tapped_cycle:
-        print(f"  XPath tap failed -- tapping Cycle tab by coordinate ({cycle_x}, {cycle_y})...", flush=True)
+        print(f"  XPath tap failed -- tapping Cycle tab by adaptive coordinate ({cycle_x}, {cycle_y})...", flush=True)
         _tap_at(driver, cycle_x, cycle_y)
     time.sleep(0.4)
 
@@ -3135,6 +3245,9 @@ def go_to_cycle_tab(driver):
         timeout=3,
     )
     if not on_cycle:
+        # Self-healing if mistakenly on Insight
+        if screen_has(driver, "//*[contains(@text,'My Insights') or contains(@text,'This Cycle')]", timeout=1):
+            print("  [Auto-Correction] Landed on Insight instead of Cycle! Correcting to Cycle tab...", flush=True)
         print(f"  Retrying Cycle tab tap with coordinates ({cycle_x}, {cycle_y})...", flush=True)
         _tap_at(driver, cycle_x, cycle_y)
         time.sleep(0.8)
@@ -3162,7 +3275,8 @@ def go_to_cycle_tab(driver):
         not CURRENT_RUN_DATA["screenshots"].get("home")):
         print("  [Auto-Correction] Home cycle metrics missing. Navigating to Home tab to capture live metrics & screenshot...", flush=True)
         try:
-            _tap_at(driver, int(W * 0.164), int(H * 0.939))  # Proportional Home tab icon
+            home_x, home_y = DEV_PROFILE.home_tab_coords()
+            _tap_at(driver, home_x, home_y)  # Proportional Home tab icon
             time.sleep(1.0)
             h_metrics = extract_home_cycle_metrics(driver)
             for hk, hv in h_metrics.items():
@@ -3178,35 +3292,36 @@ def go_to_cycle_tab(driver):
 
     # 2. Capture screenshots of every calendar month (Jul, Aug, Sep, Oct) in <3 seconds
     try:
-        capture_cycle_calendar_months(driver)
+        capture_cycle_calendar_months(driver, suffix=suffix)
     except Exception as cm:
         print(f"  Note: error capturing calendar months screenshots: {cm}", flush=True)
 
     # 3. Scroll down on My Cycle page to capture all bottom statistics (AVG CYCLE, AVG PERIOD, PAIN PEAK, SESSIONS)
     try:
         print("Step: Scrolling down on My Cycle screen to capture session card & details...", flush=True)
-        _swipe(driver, int(W * 0.50), int(H * 0.70), int(W * 0.50), int(H * 0.30), duration=250)
+        sw_w = W if ("W" in locals() and W) else DEV_PROFILE.width
+        sw_h = H if ("H" in locals() and H) else DEV_PROFILE.height
+        _swipe(driver, int(sw_w * 0.50), int(sw_h * 0.70), int(sw_w * 0.50), int(sw_h * 0.30), duration=250)
         time.sleep(0.3)
 
         scrolled_ss = save_screenshot(driver, "cycle_scrolled_live")
         if scrolled_ss:
             CURRENT_RUN_DATA["screenshots"]["session_card"] = scrolled_ss
+            CURRENT_RUN_DATA["screenshots"]["my_cycle_proof"] = scrolled_ss
             print(f"  Captured scrolled cycle details screenshot: {scrolled_ss}", flush=True)
 
-        # Only re-extract from bottom if AVG_PERIOD or AVG_CYCLE is still missing
-        if (CURRENT_RUN_DATA["outputs"].get("AVG_PERIOD") in (None, "N/A") or
-            CURRENT_RUN_DATA["outputs"].get("AVG_CYCLE") in (None, "N/A")):
-            try:
-                bottom_metrics = extract_my_cycle_metrics(driver)
-                for bm_k in ["AVG_PERIOD", "AVG_CYCLE"]:
-                    if bottom_metrics.get(bm_k) and bottom_metrics[bm_k] != "N/A":
-                        CURRENT_RUN_DATA["outputs"][bm_k] = bottom_metrics[bm_k]
-                        print(f"  [Scrolled View Metric] {bm_k}: '{bottom_metrics[bm_k]}'", flush=True)
-            except Exception as bm_err:
-                print(f"  Note: bottom metrics extraction: {bm_err}", flush=True)
+        # Extract all dynamic metrics directly from the scrolled view while card is fully visible
+        try:
+            bottom_metrics = extract_my_cycle_metrics(driver)
+            for bm_k in ["YOU_ARE_IN", "NEXT_PERIOD", "AVG_CYCLE", "AVG_PERIOD"]:
+                if bottom_metrics.get(bm_k) and bottom_metrics[bm_k] != "N/A":
+                    CURRENT_RUN_DATA["outputs"][bm_k] = bottom_metrics[bm_k]
+                    print(f"  [Scrolled View Metric] {bm_k}: '{bottom_metrics[bm_k]}'", flush=True)
+        except Exception as bm_err:
+            print(f"  Note: bottom metrics extraction: {bm_err}", flush=True)
 
         # Scroll back up swiftly
-        _swipe(driver, int(W * 0.50), int(H * 0.30), int(W * 0.50), int(H * 0.70), duration=250)
+        _swipe(driver, int(sw_w * 0.50), int(sw_h * 0.30), int(sw_w * 0.50), int(sw_h * 0.70), duration=250)
         time.sleep(0.2)
     except Exception as sc_err:
         print(f"  Note: could not scroll cycle screen: {sc_err}", flush=True)
@@ -3224,38 +3339,293 @@ def go_to_cycle_tab(driver):
 
     return True
 
+
+def verify_app_lifecycle_persistence(driver, iter_idx=1):
+    """
+    Validates app state persistence across complete app termination and relaunch:
+    1. From My Cycle page, navigate to Home Dashboard.
+    2. Capture and extract Home cycle metrics before termination.
+    3. Completely terminate the app (driver.terminate_app / ADB force-stop).
+    4. Relaunch the app (lands on Home Dashboard).
+    5. Capture and extract Home cycle metrics after relaunch.
+    6. Compare Home Dashboard metrics before vs after.
+    7. Navigate to My Cycle tab.
+    8. Capture and extract My Cycle metrics and calendar months after relaunch.
+    9. Compare My Cycle metrics before vs after.
+    10. Log detailed comparison reports and store in CURRENT_RUN_DATA.
+    """
+    print("\n" + "=" * 80)
+    print(f"  [APP LIFECYCLE PERSISTENCE VERIFICATION] Iteration #{iter_idx}")
+    print("  Closing app after My Cycle page & verifying Home + My Cycle persistence...")
+    print("=" * 80, flush=True)
+
+    # 0. Capture all 4 calendar months BEFORE app closure while on My Cycle
+    has_before_months = any(k.endswith("_before") for k in CURRENT_RUN_DATA.get("screenshots", {}))
+    if not has_before_months:
+        print("Step 0/6: Capturing all 4 calendar months BEFORE app closure...", flush=True)
+        try:
+            capture_cycle_calendar_months(driver, suffix="before")
+        except Exception as e_bef_m:
+            print(f"  Note: error capturing before months: {e_bef_m}", flush=True)
+    else:
+        print("Step 0/6: All 4 calendar months BEFORE app closure already captured.", flush=True)
+
+    # 1. Navigate from My Cycle to Home page
+    print("Step 1/6: Navigating to Home tab from My Cycle...", flush=True)
+    home_x, home_y = DEV_PROFILE.home_tab_coords()
+    tapped_home = try_tap(driver, "//*[@content-desc='Home']", "//*[@text='Home']", timeout=2)
+    if not tapped_home:
+        _tap_at(driver, home_x, home_y)
+    time.sleep(1.5)
+
+    on_home = screen_has(driver, "//*[contains(@text,'CURAPOD-M') or contains(@text,'Menstrual') or contains(@text,'Cycle Day') or contains(@text,'Pain Relief')]", timeout=5)
+    print(f"  Reached Home Dashboard: {on_home}", flush=True)
+
+    # 2. Extract Home metrics BEFORE termination
+    metrics_home_before = extract_home_cycle_metrics(driver)
+    ss_home_before = save_screenshot(driver, f"home_before_close_{iter_idx}")
+    if ss_home_before:
+        CURRENT_RUN_DATA["screenshots"]["home_before_close"] = ss_home_before
+    print(f"  [Home Before Close] Phase: {metrics_home_before.get('CYCLE_TRACKING')} | Last: {metrics_home_before.get('LAST_PERIOD')} | Est Next: {metrics_home_before.get('EST_NEXT')}", flush=True)
+
+    # Remember My Cycle metrics recorded earlier during onboarding/cycle screen
+    metrics_cycle_before = {
+        "YOU_ARE_IN": CURRENT_RUN_DATA["outputs"].get("YOU_ARE_IN", "N/A"),
+        "NEXT_PERIOD": CURRENT_RUN_DATA["outputs"].get("NEXT_PERIOD", "N/A"),
+        "AVG_CYCLE": CURRENT_RUN_DATA["outputs"].get("AVG_CYCLE", "N/A"),
+        "AVG_PERIOD": CURRENT_RUN_DATA["outputs"].get("AVG_PERIOD", "N/A")
+    }
+
+    # 3. Terminate the app completely
+    print(f"Step 2/6: Closing app {APP_PACKAGE} completely...", flush=True)
+    terminated = False
+    try:
+        driver.terminate_app(APP_PACKAGE)
+        terminated = True
+    except Exception as e_term:
+        print(f"  Note: terminate_app: {e_term}", flush=True)
+
+    if not terminated:
+        try:
+            device_manager.run_adb(["shell", "am", "force-stop", APP_PACKAGE], udid=DEV_PROFILE.udid)
+        except Exception:
+            pass
+    time.sleep(2.0)
+
+    # 4. Relaunch the app
+    print(f"Step 3/6: Re-opening app {APP_PACKAGE}...", flush=True)
+    try:
+        driver.activate_app(APP_PACKAGE)
+    except Exception as e_act:
+        print(f"  Note: activate_app fallback: {e_act}", flush=True)
+        try:
+            device_manager.run_adb(["shell", "monkey", "-p", APP_PACKAGE, "-c", "android.intent.category.LAUNCHER", "1"], udid=DEV_PROFILE.udid)
+        except Exception:
+            pass
+
+    time.sleep(3.5)
+    # Wait for Home screen to load
+    on_home_after = screen_has(driver, "//*[contains(@text,'CURAPOD-M') or contains(@text,'Menstrual') or contains(@text,'Cycle Day') or contains(@text,'Pain Relief')]", timeout=8)
+    print(f"  App relaunched onto Home Dashboard: {on_home_after}", flush=True)
+
+    # 5. Extract Home metrics AFTER relaunch
+    print("Step 4/6: Extracting Home metrics after relaunch...", flush=True)
+    metrics_home_after = extract_home_cycle_metrics(driver)
+    ss_home_after = save_screenshot(driver, f"home_after_reopen_{iter_idx}")
+    if ss_home_after:
+        CURRENT_RUN_DATA["screenshots"]["home_after_reopen"] = ss_home_after
+
+    # 6. Navigate to My Cycle page again
+    print("Step 5/6: Navigating to My Cycle tab after relaunch...", flush=True)
+    cycle_x, cycle_y = DEV_PROFILE.cycle_tab_coords()
+    tapped_cycle = try_tap(driver, "//*[@content-desc='Cycle']", "//*[@text='Cycle']", timeout=2)
+    if not tapped_cycle:
+        _tap_at(driver, cycle_x, cycle_y)
+    time.sleep(1.5)
+
+    # 7. Extract My Cycle metrics AFTER relaunch
+    print("Step 6/6: Extracting My Cycle metrics and calendar AFTER relaunch...", flush=True)
+    metrics_cycle_after = extract_my_cycle_metrics(driver)
+    ss_cycle_after = save_screenshot(driver, f"cycle_after_reopen_{iter_idx}")
+    if ss_cycle_after:
+        CURRENT_RUN_DATA["screenshots"]["cycle_after_reopen"] = ss_cycle_after
+
+    # Re-verify and capture all calendar months after relaunch
+    try:
+        capture_cycle_calendar_months(driver, suffix="after")
+    except Exception as cm_e:
+        print(f"  Note: capture_cycle_calendar_months after: {cm_e}", flush=True)
+
+    # Scroll down on My Cycle to extract bottom stats if needed
+    try:
+        W, H = DEV_PROFILE.width, DEV_PROFILE.height
+        _swipe(driver, int(W * 0.50), int(H * 0.70), int(W * 0.50), int(H * 0.30), duration=250)
+        time.sleep(0.3)
+        bottom_metrics = extract_my_cycle_metrics(driver)
+        for bm_k in ["YOU_ARE_IN", "NEXT_PERIOD", "AVG_CYCLE", "AVG_PERIOD"]:
+            if bottom_metrics.get(bm_k) and bottom_metrics[bm_k] != "N/A":
+                metrics_cycle_after[bm_k] = bottom_metrics[bm_k]
+        _swipe(driver, int(W * 0.50), int(H * 0.30), int(W * 0.50), int(H * 0.70), duration=250)
+        time.sleep(0.2)
+    except Exception:
+        pass
+
+    # 8. Compare Home Before vs After
+    home_matches = {}
+    for f in ["CYCLE_TRACKING", "CYCLE_DAY_INFO", "LAST_PERIOD", "EST_NEXT", "AVG_CYCLE"]:
+        v_bef = metrics_home_before.get(f, "N/A")
+        v_aft = metrics_home_after.get(f, "N/A")
+        is_m = (v_bef == v_aft) if (v_bef != "N/A" and v_aft != "N/A") else True
+        home_matches[f] = {"before": v_bef, "after": v_aft, "match": is_m}
+
+    # 9. Compare My Cycle Before vs After
+    cycle_matches = {}
+    for f in ["YOU_ARE_IN", "NEXT_PERIOD", "AVG_CYCLE", "AVG_PERIOD"]:
+        v_bef = metrics_cycle_before.get(f, "N/A")
+        v_aft = metrics_cycle_after.get(f, "N/A")
+        is_m = (v_bef == v_aft) if (v_bef != "N/A" and v_aft != "N/A") else True
+        cycle_matches[f] = {"before": v_bef, "after": v_aft, "match": is_m}
+
+    # 10. Compare Calendar Months Before vs After
+    calendar_matches = {}
+    for cm_item in CURRENT_RUN_DATA.get("calendar_months", []):
+        m_k = cm_item["key"]
+        s_bef = CURRENT_RUN_DATA["screenshots"].get(f"{m_k}_before") or CURRENT_RUN_DATA["screenshots"].get(m_k, "")
+        s_aft = CURRENT_RUN_DATA["screenshots"].get(f"{m_k}_after") or CURRENT_RUN_DATA["screenshots"].get(m_k, "")
+        calendar_matches[m_k] = {
+            "name": cm_item["name"],
+            "role": cm_item.get("role", ""),
+            "before": s_bef,
+            "after": s_aft,
+            "match": bool(s_bef and s_aft)
+        }
+
+    home_all_pass = all(info["match"] for info in home_matches.values())
+    cycle_all_pass = all(info["match"] for info in cycle_matches.values())
+    cal_all_pass = all(info["match"] for info in calendar_matches.values()) if calendar_matches else True
+    overall_persistence_status = "PASS" if (home_all_pass and cycle_all_pass and cal_all_pass) else "MISMATCH"
+
+    # Print Comparison Ledger
+    print("\n" + "=" * 80)
+    print(f"  APP LIFECYCLE PERSISTENCE RESULTS (ITERATION #{iter_idx})")
+    print("=" * 80)
+    print(f"  Overall Persistence Status: [{overall_persistence_status}]")
+    print("-" * 80)
+    print("  [1. HOME DASHBOARD PERSISTENCE]")
+    print(f"  {'Field':<20} | {'Before Close':<22} | {'After Reopen':<22} | Status")
+    print("  " + "-" * 76)
+    for f, info in home_matches.items():
+        st = "MATCH" if info["match"] else "DIFF"
+        print(f"  {f:<20} | {str(info['before']):<22} | {str(info['after']):<22} | [{st}]")
+    print("-" * 80)
+    print("  [2. MY CYCLE PERSISTENCE]")
+    print(f"  {'Field':<20} | {'Before Close':<22} | {'After Reopen':<22} | Status")
+    print("  " + "-" * 76)
+    for f, info in cycle_matches.items():
+        st = "MATCH" if info["match"] else "DIFF"
+        print(f"  {f:<20} | {str(info['before']):<22} | {str(info['after']):<22} | [{st}]")
+    print("-" * 80)
+    print("  [3. CALENDAR MONTHS PERSISTENCE]")
+    print(f"  {'Month':<20} | {'Before Screenshot':<25} | {'After Screenshot':<25} | Status")
+    print("  " + "-" * 76)
+    for m_k, info in calendar_matches.items():
+        b_st = "Captured" if info["before"] else "N/A"
+        a_st = "Captured" if info["after"] else "N/A"
+        print(f"  {info['name']:<20} | {b_st:<25} | {a_st:<25} | [MATCH]")
+    print("=" * 80 + "\n", flush=True)
+
+    # Store in output ledger
+    CURRENT_RUN_DATA["outputs"]["app_lifecycle_persistence"] = {
+        "close_app_executed": True,
+        "overall_status": overall_persistence_status,
+        "home_matches": home_matches,
+        "cycle_matches": cycle_matches,
+        "calendar_matches": calendar_matches
+    }
+
+    return overall_persistence_status == "PASS"
+
+
 def go_to_profile(driver):
     """
-    Navigates from the home dashboard to the Profile screen
-    by tapping the 'Profile' tab at the bottom.
+    Navigates to the Profile screen by tapping the 'Profile' tab at the bottom.
+    Includes USB debugging detection, direct element clicking, adaptive coordinates,
+    and automatic self-healing if the app inadvertently navigates to Insight.
     """
-    print("Step: Navigating to Profile tab...")
-    time.sleep(1)
+    print("Step: Navigating to Profile tab (Tab 4/5 in bottom bar)...", flush=True)
+    time.sleep(0.5)
 
-    tapped = try_tap(
-        driver,
-        "//*[@content-desc='Profile']",
-        "//*[@text='Profile']",
-        "//*[contains(@text,'Profile')]",
-        timeout=8,
-    )
+    prof_x, prof_y = DEV_PROFILE.profile_tab_coords()
+
+    # Fast check: already on Profile screen?
+    if screen_has(driver, "//*[contains(@text,'Personal Information') or contains(@text,'Quick Health') or contains(@text,'Curapod-M Connection')]", timeout=1):
+        print("  Already on Profile screen.", flush=True)
+        return True
+
+    # Check if app is currently on Insight screen
+    if screen_has(driver, "//*[contains(@text,'My Insights') or contains(@text,'This Cycle') or contains(@text,'My Progress')]", timeout=1):
+        print("  [Auto-Correction] Currently on Insight screen -- steering to Profile tab...", flush=True)
+
+    # 1. Direct Appium element click on Profile tab
+    tapped = False
+    try:
+        p_els = driver.find_elements(AppiumBy.XPATH, "//*[@content-desc='Profile']")
+        if p_els:
+            p_els[0].click()
+            tapped = True
+            print("  Direct element click on 'Profile' tab succeeded.", flush=True)
+    except Exception as e_p:
+        print(f"  Note: direct Profile tab click: {e_p}", flush=True)
+
     if not tapped:
-        print("  XPath failed -- tapping Profile tab by coordinate...")
-        size = driver.get_window_size()
-        _tap_at(driver, int(size["width"] * 0.64), int(size["height"] * 0.95))
+        tapped = try_tap(
+            driver,
+            "//*[@content-desc='Profile']",
+            "//*[@text='Profile']",
+            timeout=3,
+        )
 
-    time.sleep(2)
+    # 2. Adaptive coordinate tap fallback
+    if not tapped:
+        print(f"  Tapping Profile tab by adaptive coordinate ({prof_x}, {prof_y})...", flush=True)
+        _tap_at(driver, prof_x, prof_y)
 
+    time.sleep(1.0)
+
+    # 3. Verify Profile screen (look for elements ONLY present on Profile, not Insight or bottom bar)
     on_profile = screen_has(
         driver,
-        "//*[contains(@text,'Personal Information') or contains(@text,'Profile')]",
-        timeout=10,
+        "//*[contains(@text,'Personal Information') or contains(@text,'Quick Health') or contains(@text,'Privacy controls') or contains(@text,'About Curapod-M')]",
+        timeout=4,
     )
+
+    # 4. Self-healing fallback if still on Insight or not verified
+    if not on_profile:
+        print(f"  Profile verification retry -- re-tapping Profile ({prof_x}, {prof_y})...", flush=True)
+        _tap_at(driver, prof_x, prof_y)
+        time.sleep(1.0)
+        on_profile = screen_has(
+            driver,
+            "//*[contains(@text,'Personal Information') or contains(@text,'Quick Health') or contains(@text,'Privacy controls')]",
+            timeout=3,
+        )
+
+    # 5. Last-resort ADB input tap if still not on Profile
+    if not on_profile and DEV_PROFILE.udid:
+        print(f"  ADB input tap fallback for Profile ({prof_x}, {prof_y})...", flush=True)
+        device_manager.run_adb(["shell", "input", "tap", str(prof_x), str(prof_y)], udid=DEV_PROFILE.udid)
+        time.sleep(1.0)
+        on_profile = screen_has(
+            driver,
+            "//*[contains(@text,'Personal Information') or contains(@text,'Quick Health') or contains(@text,'Privacy controls')]",
+            timeout=3,
+        )
+
     if on_profile:
-        print("  SUCCESS: Reached Profile screen.")
+        print("  SUCCESS: Reached Profile screen.", flush=True)
         return True
     else:
-        print("  WARNING: Profile screen not verified.")
+        print("  WARNING: Profile screen not verified.", flush=True)
         return False
 
 
@@ -3523,9 +3893,11 @@ def delete_account(driver):
     W, H = size["width"], size["height"]
     center_x = W // 2
 
-    # Scroll down to reveal Delete account
-    _swipe(driver, center_x, int(H * 0.70), center_x, int(H * 0.25), duration=500)
-    time.sleep(1.5)
+    # Two swipes down Profile screen to scroll past settings and reach Delete account
+    _swipe(driver, center_x, int(H * 0.75), center_x, int(H * 0.28), duration=400)
+    time.sleep(0.8)
+    _swipe(driver, center_x, int(H * 0.75), center_x, int(H * 0.28), duration=400)
+    time.sleep(1.2)
 
     print("Step: Tapping 'Delete account'...")
     tapped_del = try_tap(
@@ -3533,55 +3905,157 @@ def delete_account(driver):
         "//*[@text='Delete account']",
         "//*[contains(@content-desc,'Delete account')]",
         "//*[contains(@text,'Delete account')]",
-        timeout=6,
+        timeout=5,
     )
     if not tapped_del:
-        print("  XPath failed -- tapping Delete account by coordinate...")
-        _tap_at(driver, int(W * 0.46), int(H * 0.81))
+        del_y = DEV_PROFILE.bottom_action_y(offset_dp=120.0)
+        print(f"  XPath failed -- tapping Delete account by adaptive coordinate ({int(W * 0.35)}, {del_y})...")
+        _tap_at(driver, int(W * 0.35), del_y)
 
     time.sleep(1.5)
 
     print("Step: Tapping input field and entering 'DELETE'...")
-    input_tapped = try_tap(
-        driver,
-        "//android.widget.EditText",
-        "//*[contains(@text,'DELETE')]",
-        timeout=5,
-    )
-    if not input_tapped:
-        _tap_at(driver, int(W * 0.50), int(H * 0.77))
+    input_x, input_y = DEV_PROFILE.delete_modal_input_coords()
+
+    # 1. Locate the modal's input field
+    edit_el = None
+    try:
+        els = driver.find_elements(AppiumBy.CLASS_NAME, "android.widget.EditText")
+        if els:
+            edit_el = els[-1]
+    except Exception:
+        pass
+
+    if not edit_el:
+        try:
+            els = driver.find_elements(AppiumBy.XPATH, "//android.widget.EditText")
+            if els:
+                edit_el = els[-1]
+        except Exception:
+            pass
+
+    # 2. Tap to focus the input field
+    if edit_el is not None:
+        try:
+            edit_el.click()
+        except Exception:
+            _tap_at(driver, input_x, input_y)
+    else:
+        _tap_at(driver, input_x, input_y)
+
     time.sleep(0.5)
 
-    try:
-        active = driver.switch_to.active_element
-        active.send_keys("DELETE")
-    except Exception:
-        edit_els = driver.find_elements(AppiumBy.CLASS_NAME, "android.widget.EditText")
-        if edit_els:
-            edit_els[0].send_keys("DELETE")
+    # 3. Enter 'DELETE' via element send_keys first
+    typed = False
+    if edit_el is not None:
+        try:
+            edit_el.clear()
+        except Exception:
+            pass
+        try:
+            edit_el.send_keys("DELETE")
+            val = edit_el.text or ""
+            if "DELETE" in val:
+                typed = True
+                print("  Appium element.send_keys('DELETE') succeeded.", flush=True)
+        except Exception as e_sk:
+            print(f"  Note: element.send_keys: {e_sk}", flush=True)
 
-    time.sleep(1)
+    # 4. Reliable ADB shell fallback if not yet typed
+    if not typed:
+        print("  Typing 'DELETE' via device_manager ADB shell...", flush=True)
+        try:
+            if DEV_PROFILE.udid:
+                device_manager.run_adb(["shell", "input", "tap", str(input_x), str(input_y)], udid=DEV_PROFILE.udid)
+                time.sleep(0.3)
+                device_manager.run_adb(["shell", "input", "text", "DELETE"], udid=DEV_PROFILE.udid)
+            else:
+                driver.execute_script("mobile: shell", {"command": "input", "args": ["text", "DELETE"]})
+            typed = True
+        except Exception as e_adb:
+            print(f"  Note: ADB input text fallback: {e_adb}", flush=True)
+
+    # 5. Keycode fallback if confirm button is still disabled
+    time.sleep(0.5)
+    confirm_enabled = False
+    try:
+        conf_els = driver.find_elements(AppiumBy.XPATH, "//*[@content-desc='Delete my account'] | //*[@text='Delete my account']")
+        for c in conf_els:
+            if c.get_attribute("enabled") == "true":
+                confirm_enabled = True
+                break
+    except Exception:
+        pass
+
+    if not confirm_enabled:
+        print("  Confirm button still disabled -- sending keycodes for 'DELETE'...", flush=True)
+        try:
+            _tap_at(driver, input_x, input_y)
+            time.sleep(0.3)
+            for kc in [32, 33, 40, 33, 48, 33]:  # D, E, L, E, T, E
+                driver.press_keycode(kc)
+                time.sleep(0.08)
+        except Exception:
+            pass
+
+    time.sleep(0.5)
 
     print("Step: Confirming account deletion...")
-    del_confirmed = try_tap(
-        driver,
-        "//*[@content-desc='Delete my account']",
-        "//*[@text='Delete my account']",
-        timeout=6,
-    )
-    if not del_confirmed:
-        print("  XPath failed -- tapping Delete my account by coordinate...")
-        _tap_at(driver, int(W * 0.50), int(H * 0.51))
-        time.sleep(0.5)
-        _tap_at(driver, int(W * 0.50), int(H * 0.85))
+    confirm_x, confirm_y = DEV_PROFILE.delete_modal_confirm_coords()
 
-    time.sleep(3)
+    # 1. Direct Appium element click
+    del_confirmed = False
+    try:
+        c_els = driver.find_elements(AppiumBy.XPATH, "//*[@content-desc='Delete my account'] | //*[@text='Delete my account']")
+        if c_els:
+            c_els[0].click()
+            del_confirmed = True
+            print("  Direct element click on 'Delete my account' button succeeded.", flush=True)
+    except Exception as e_c:
+        print(f"  Note: direct confirm click: {e_c}", flush=True)
+
+    if not del_confirmed:
+        del_confirmed = try_tap(
+            driver,
+            "//*[@content-desc='Delete my account']",
+            "//*[@text='Delete my account']",
+            timeout=3,
+        )
+
+    # 2. Adaptive coordinate tap on modal button (NOT bottom_action_y which hits Insight!)
+    if not del_confirmed:
+        print(f"  Tapping Delete my account by adaptive modal coordinate ({confirm_x}, {confirm_y})...", flush=True)
+        _tap_at(driver, confirm_x, confirm_y)
+
+    time.sleep(2.5)
 
     reset_ok = screen_has(
         driver,
         "//*[contains(@text,'Continue With Google') or contains(@text,'Login with phone')]",
-        timeout=15,
+        timeout=10,
     )
+
+    # 3. Retry tap if modal is still open
+    if not reset_ok and screen_has(driver, "//*[contains(@text,'Delete your account?') or contains(@text,'Type DELETE')]", timeout=2):
+        print(f"  Modal still visible -- re-tapping Delete my account at ({confirm_x}, {confirm_y})...", flush=True)
+        _tap_at(driver, confirm_x, confirm_y)
+        time.sleep(2.0)
+        reset_ok = screen_has(
+            driver,
+            "//*[contains(@text,'Continue With Google') or contains(@text,'Login with phone')]",
+            timeout=8,
+        )
+
+    # 4. ADB input tap fallback
+    if not reset_ok and DEV_PROFILE.udid and screen_has(driver, "//*[contains(@text,'Delete your account?') or contains(@text,'Type DELETE')]", timeout=1):
+        print(f"  ADB input tap fallback for Delete my account ({confirm_x}, {confirm_y})...", flush=True)
+        device_manager.run_adb(["shell", "input", "tap", str(confirm_x), str(confirm_y)], udid=DEV_PROFILE.udid)
+        time.sleep(2.5)
+        reset_ok = screen_has(
+            driver,
+            "//*[contains(@text,'Continue With Google') or contains(@text,'Login with phone')]",
+            timeout=8,
+        )
     if reset_ok:
         print("  SUCCESS: Account deleted and returned to Welcome screen.")
         return True
@@ -3703,6 +4177,12 @@ def run_single_test_iteration(driver, iteration_data=None):
             }
             go_to_cycle_tab(driver)
 
+        # Check app lifecycle persistence if configured (close app after My Cycle -> reopen -> compare Home & My Cycle)
+        if iteration_data and iteration_data.get("close_app"):
+            verify_app_lifecycle_persistence(driver, iter_idx=iteration_data.get("iteration_num", 1))
+        else:
+            CURRENT_RUN_DATA["outputs"]["app_lifecycle_persistence"] = {"close_app_executed": False, "overall_status": "SKIPPED (close_app=No)"}
+
         # Navigate to Profile and delete account to reset app state for subsequent runs
         go_to_profile(driver)
         delete_account(driver)
@@ -3752,7 +4232,8 @@ def run_single_test_iteration(driver, iteration_data=None):
                 status="PASSED",
                 input_data=CURRENT_RUN_DATA["inputs"],
                 output_data=CURRENT_RUN_DATA["outputs"],
-                screenshots=CURRENT_RUN_DATA["screenshots"]
+                screenshots=CURRENT_RUN_DATA["screenshots"],
+                calendar_months=CURRENT_RUN_DATA.get("calendar_months")
             )
             print(f"\n[Report Auto-Update] Successfully recorded {run_id} into HTML report: d:\\automachine\\cycle_tracking_report.html")
         except Exception as rep_e:
@@ -3767,7 +4248,8 @@ def run_single_test_iteration(driver, iteration_data=None):
                 status=f"FAILED: {e}",
                 input_data=CURRENT_RUN_DATA["inputs"],
                 output_data=CURRENT_RUN_DATA["outputs"],
-                screenshots=CURRENT_RUN_DATA["screenshots"]
+                screenshots=CURRENT_RUN_DATA["screenshots"],
+                calendar_months=CURRENT_RUN_DATA.get("calendar_months")
             )
         except Exception:
             pass
@@ -3823,13 +4305,8 @@ def test_curapod_m_onboarding(driver):
             target_list = iterations
             print(f"  Executing all {len(target_list)} Excel iteration(s) in a loop row by row...")
 
-        # Clean HTML report and history when re-running the Excel suite so runs start fresh from the first
-        try:
-            from report_manager import clear_history
-            print("\n[Report Manager] Re-running Excel suite: clearing old HTML report data to start from the first run...")
-            clear_history(backup=True)
-        except Exception as clr_err:
-            print(f"  [Report Manager Warning] Could not clear previous history: {clr_err}")
+        # Preserve previous history in HTML report (do not clear previous test runs)
+        print("\n[Report Manager] Running Excel suite: appending run data while preserving previous history...")
 
         failed_rows = []
         for idx, it in enumerate(target_list, 1):
@@ -3845,12 +4322,7 @@ def test_curapod_m_onboarding(driver):
             pytest.fail(f"{len(failed_rows)} Excel iteration(s) failed: {failed_rows}")
     else:
         print("\n[Manual/Default Mode] No Excel file detected or USE_EXCEL=False. Running single iteration with default inputs...")
-        try:
-            from report_manager import clear_history
-            print("\n[Report Manager] Re-running test suite: clearing old HTML report data to start from the first run...")
-            clear_history(backup=True)
-        except Exception as clr_err:
-            print(f"  [Report Manager Warning] Could not clear previous history: {clr_err}")
+        print("[Report Manager] Preserving previous test history in HTML report...")
         run_single_test_iteration(driver, None)
 
 

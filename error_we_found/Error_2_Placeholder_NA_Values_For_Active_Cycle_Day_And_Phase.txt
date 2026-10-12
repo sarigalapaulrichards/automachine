@@ -1,0 +1,221 @@
+================================================================================
+ERROR REPORT 2: Placeholder / 'N/A' Values Displayed For Active Cycle Day & Phase
+Source: cycle_tracking_report.html (Test Run History & Cycle Algorithm Simulator)
+Category: App UI State / Data Binding Defect
+Severity: Critical
+Total Affected Runs: 56 of 82 Runs
+================================================================================
+
+1. ERROR DESCRIPTION
+--------------------------------------------------------------------------------
+In 56 test runs in the HTML report, the mobile app UI displays 
+uninitialized placeholder text:
+- `YOU ARE IN`: displays "- day of cycle" or "N/A"
+- `CYCLE TRACKING`: displays "N/A"
+Meanwhile, the clinical algorithms calculate active metrics (such as "Day 10", 
+"Day 15", "Day 18") and active phases ("Fertile", "Luteal", "Menstruation").
+
+
+2. ROOT CAUSE ANALYSIS (WHY IT FAILED)
+--------------------------------------------------------------------------------
+1. Disconnected State Initialization:
+   When new cycles are saved during user onboarding or via direct cycle setup, 
+   the app's local database does not bind the calculated cycle day and phase to 
+   the Home dashboard UI card. It renders the default uninitialized string templates:
+   `"- day of cycle"` and `"N/A"`.
+
+2. Failure to Determine Current Cycle Phase:
+   Because the app failed to forward-project past cycle entries into the current month,
+   the current calendar date falls outside the single historical period window stored 
+   in memory. Consequently, the phase classifier returns `null`/`N/A`.
+
+
+3. AFFECTED RUNS (ALL 56 INSTANCES FROM THE HTML REPORT)
+--------------------------------------------------------------------------------
+  • RUN-001 (2026-10-08 21:19:57) | Profile: Richie | Stepper Length: 16d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 10'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-002 (2026-10-08 21:24:25) | Profile: Richie | Stepper Length: 15d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 15'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-003 (2026-10-08 21:28:49) | Profile: Richie | Stepper Length: 16d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 10'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-004 (2026-10-08 21:33:11) | Profile: Richie | Stepper Length: 17d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 5'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-005 (2026-10-08 21:37:34) | Profile: Richie | Stepper Length: 18d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 18'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-006 (2026-10-08 21:41:58) | Profile: Richie | Stepper Length: 19d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 14'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-007 (2026-10-08 21:46:19) | Profile: Richie | Stepper Length: 20d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 10'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-008 (2026-10-08 21:50:40) | Profile: Richie | Stepper Length: 21d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 6'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-009 (2026-10-08 21:55:05) | Profile: Richie | Stepper Length: 22d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 2'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-010 (2026-10-08 21:59:25) | Profile: Richie | Stepper Length: 23d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 21'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-011 (2026-10-08 22:03:44) | Profile: Richie | Stepper Length: 24d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 18'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-012 (2026-10-08 22:07:57) | Profile: Richie | Stepper Length: 25d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 15'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-013 (2026-10-08 22:12:12) | Profile: Richie | Stepper Length: 26d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 12'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-014 (2026-10-08 22:16:26) | Profile: Richie | Stepper Length: 27d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 9'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-015 (2026-10-08 22:20:42) | Profile: Richie | Stepper Length: 28d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 6'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-016 (2026-10-08 22:24:56) | Profile: Richie | Stepper Length: 29d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 3'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-017 (2026-10-08 22:29:10) | Profile: Richie | Stepper Length: 30d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 30'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-018 (2026-10-08 22:33:23) | Profile: Richie | Stepper Length: 31d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 28'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-019 (2026-10-08 22:37:37) | Profile: Richie | Stepper Length: 32d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 26'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-020 (2026-10-08 22:41:53) | Profile: Richie | Stepper Length: 33d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 24'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-021 (2026-10-08 22:46:09) | Profile: Richie | Stepper Length: 34d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 22'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-022 (2026-10-08 22:50:28) | Profile: Richie | Stepper Length: 35d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 20'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-023 (2026-10-08 22:54:46) | Profile: Richie | Stepper Length: 36d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 18'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-024 (2026-10-08 22:59:07) | Profile: Richie | Stepper Length: 37d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 16'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-025 (2026-10-08 23:03:25) | Profile: Richie | Stepper Length: 38d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 14'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-026 (2026-10-08 23:07:49) | Profile: Richie | Stepper Length: 39d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 12'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-027 (2026-10-08 23:12:10) | Profile: Richie | Stepper Length: 40d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 10'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-028 (2026-10-08 23:16:33) | Profile: Richie | Stepper Length: 41d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 8'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-029 (2026-10-08 23:20:55) | Profile: Richie | Stepper Length: 42d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 6'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-030 (2026-10-08 23:25:20) | Profile: Richie | Stepper Length: 43d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 4'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-031 (2026-10-08 23:29:44) | Profile: Richie | Stepper Length: 44d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 2'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-033 (2026-10-08 23:38:06) | Profile: Richie | Stepper Length: 15d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 9'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-034 (2026-10-08 23:42:30) | Profile: Richie | Stepper Length: 16d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 5'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-035 (2026-10-08 23:46:55) | Profile: Richie | Stepper Length: 17d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 1'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-036 (2026-10-08 23:51:20) | Profile: Richie | Stepper Length: 18d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 15'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-037 (2026-10-08 23:55:44) | Profile: Richie | Stepper Length: 19d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 12'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-038 (2026-10-09 00:00:07) | Profile: Richie | Stepper Length: 20d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 10'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-039 (2026-10-09 00:04:18) | Profile: Richie | Stepper Length: 21d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 7'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-040 (2026-10-09 00:08:40) | Profile: Richie | Stepper Length: 22d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 4'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-041 (2026-10-09 00:13:01) | Profile: Richie | Stepper Length: 23d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 1'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-042 (2026-10-09 00:17:24) | Profile: Richie | Stepper Length: 24d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 22'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-043 (2026-10-09 00:21:45) | Profile: Richie | Stepper Length: 25d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 20'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-044 (2026-10-09 00:26:05) | Profile: Richie | Stepper Length: 26d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 18'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Luteal'
+  • RUN-045 (2026-10-09 00:30:26) | Profile: Richie | Stepper Length: 27d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 16'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-046 (2026-10-09 00:34:48) | Profile: Richie | Stepper Length: 28d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 14'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-047 (2026-10-09 00:39:10) | Profile: Richie | Stepper Length: 29d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 12'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-048 (2026-10-09 00:43:29) | Profile: Richie | Stepper Length: 30d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 10'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-049 (2026-10-09 00:47:52) | Profile: Richie | Stepper Length: 31d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 8'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-050 (2026-10-09 00:52:15) | Profile: Richie | Stepper Length: 32d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 6'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Follicular'
+  • RUN-051 (2026-10-09 00:56:38) | Profile: Richie | Stepper Length: 33d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 4'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-052 (2026-10-09 01:01:02) | Profile: Richie | Stepper Length: 34d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 2'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-064 (2026-10-09 01:49:15) | Profile: Richie | Stepper Length: 15d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 9'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-065 (2026-10-09 01:53:45) | Profile: Richie | Stepper Length: 16d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 7'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Fertile'
+  • RUN-066 (2026-10-09 01:58:19) | Profile: Richie | Stepper Length: 17d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 5'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-067 (2026-10-09 02:02:51) | Profile: Richie | Stepper Length: 18d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 3'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+  • RUN-068 (2026-10-09 02:07:22) | Profile: Richie | Stepper Length: 19d
+      YOU ARE IN:     App UI='- day of cycle' vs Algo='Day 1'
+      CYCLE TRACKING: App UI='N/A' vs Algo='Menstruation'
+
+
+4. EXPECTED VS ACTUAL BEHAVIOR
+--------------------------------------------------------------------------------
+EXPECTED:
+  The app UI should display the active cycle day (e.g., "Day 10", "Day 5") and 
+  current cycle phase (e.g., "Fertile", "Luteal", "Menstruation").
+
+ACTUAL:
+  The app UI displays placeholder text "- day of cycle" and "N/A".
+
+
+5. RECOMMENDED FIX
+--------------------------------------------------------------------------------
+1. Implement forward-projection in the client-side state manager so that current date 
+   is always mapped to a cycle day between 1 and `avg_cycle_length`.
+2. Connect the cycle phase evaluator to the projected cycle day to populate the 
+   `CYCLE TRACKING` card instead of falling back to "N/A".
+================================================================================

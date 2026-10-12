@@ -10,9 +10,10 @@ env/
 dist/
 build/
 
-# Binary packages
+# Binary packages & large media
 *.apk
 *.aab
+*.mp4
 
 # Testing & caches
 .pytest_cache/
@@ -33,6 +34,7 @@ scratch/
 # Test run reports and history backups
 *.html
 !1.09_M/**
+!1.09/**
 test_history*.json
 
 # Backups and temp files

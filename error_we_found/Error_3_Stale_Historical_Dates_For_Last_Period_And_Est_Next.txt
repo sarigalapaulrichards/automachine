@@ -1,0 +1,284 @@
+================================================================================
+ERROR REPORT 3: Stale Historical Dates Displayed For LAST PERIOD & EST. NEXT
+Source: cycle_tracking_report.html (Test Run History & Cycle Algorithm Simulator)
+Category: App UI Recurrence & Date Calculation Defect
+Severity: High
+Total Affected Runs: 78 of 82 Runs
+================================================================================
+
+1. ERROR DESCRIPTION
+--------------------------------------------------------------------------------
+In 78 test runs, the mobile app UI displays historical dates from months 
+prior (for example, LAST PERIOD: "Jul 11", EST. NEXT: "Jul 27" or "Aug 25") 
+even though testing is running in October 2026.
+In contrast, both clinical algorithms forward-project recurrence and identify the 
+most recent period date (e.g., "Sep 29", "Oct 04", "Sep 27") and upcoming next 
+period date (e.g., "Oct 15", "Oct 21", "Oct 23").
+
+
+2. ROOT CAUSE ANALYSIS (WHY IT FAILED)
+--------------------------------------------------------------------------------
+1. Raw Historical Echoing:
+   The mobile application displays the exact user input dates entered during test setup 
+   (e.g., 'Jul 11') as `LAST PERIOD` instead of computing the most recent recurring 
+   period start that occurred before the current date.
+
+2. Static Next Period Estimation:
+   The app adds `stepper_cycle_length` to the single historical start date once, 
+   producing an `EST_NEXT` that is still in the past (e.g. `Jul 27`), rather than 
+   chaining recurrence to find the true next occurrence in October.
+
+
+3. AFFECTED RUNS (ALL 78 INSTANCES FROM THE HTML REPORT)
+--------------------------------------------------------------------------------
+  • RUN-001 (2026-10-08 21:19:57) | Profile: Richie | Stepper Length: 16d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 29'
+      EST. NEXT:   App='Jul 27' vs Algo='Oct 15'
+  • RUN-002 (2026-10-08 21:24:25) | Profile: Richie | Stepper Length: 15d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 24'
+      EST. NEXT:   App='Jul 26' vs Algo='Oct 09'
+  • RUN-003 (2026-10-08 21:28:49) | Profile: Richie | Stepper Length: 16d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 29'
+      EST. NEXT:   App='Jul 27' vs Algo='Oct 15'
+  • RUN-004 (2026-10-08 21:33:11) | Profile: Richie | Stepper Length: 17d
+      LAST PERIOD: App='Jul 11' vs Algo='Oct 04'
+      EST. NEXT:   App='Jul 28' vs Algo='Oct 21'
+  • RUN-005 (2026-10-08 21:37:34) | Profile: Richie | Stepper Length: 18d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 21'
+      EST. NEXT:   App='Jul 29' vs Algo='Oct 09'
+  • RUN-006 (2026-10-08 21:41:58) | Profile: Richie | Stepper Length: 19d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 25'
+      EST. NEXT:   App='Jul 30' vs Algo='Oct 14'
+  • RUN-007 (2026-10-08 21:46:19) | Profile: Richie | Stepper Length: 20d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 29'
+      EST. NEXT:   App='Jul 31' vs Algo='Oct 19'
+  • RUN-008 (2026-10-08 21:50:40) | Profile: Richie | Stepper Length: 21d
+      LAST PERIOD: App='Jul 11' vs Algo='Oct 03'
+      EST. NEXT:   App='Aug 01' vs Algo='Oct 24'
+  • RUN-009 (2026-10-08 21:55:05) | Profile: Richie | Stepper Length: 22d
+      LAST PERIOD: App='Jul 11' vs Algo='Oct 07'
+      EST. NEXT:   App='Aug 02' vs Algo='Oct 29'
+  • RUN-010 (2026-10-08 21:59:25) | Profile: Richie | Stepper Length: 23d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 18'
+      EST. NEXT:   App='Aug 03' vs Algo='Oct 11'
+  • RUN-011 (2026-10-08 22:03:44) | Profile: Richie | Stepper Length: 24d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 21'
+      EST. NEXT:   App='Aug 04' vs Algo='Oct 15'
+  • RUN-012 (2026-10-08 22:07:57) | Profile: Richie | Stepper Length: 25d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 24'
+      EST. NEXT:   App='Aug 05' vs Algo='Oct 19'
+  • RUN-013 (2026-10-08 22:12:12) | Profile: Richie | Stepper Length: 26d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 27'
+      EST. NEXT:   App='Aug 06' vs Algo='Oct 23'
+  • RUN-014 (2026-10-08 22:16:26) | Profile: Richie | Stepper Length: 27d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 30'
+      EST. NEXT:   App='Aug 07' vs Algo='Oct 27'
+  • RUN-015 (2026-10-08 22:20:42) | Profile: Richie | Stepper Length: 28d
+      LAST PERIOD: App='Jul 11' vs Algo='Oct 03'
+      EST. NEXT:   App='Aug 08' vs Algo='Oct 31'
+  • RUN-016 (2026-10-08 22:24:56) | Profile: Richie | Stepper Length: 29d
+      LAST PERIOD: App='Jul 11' vs Algo='Oct 06'
+      EST. NEXT:   App='Aug 09' vs Algo='Nov 04'
+  • RUN-017 (2026-10-08 22:29:10) | Profile: Richie | Stepper Length: 30d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 09'
+      EST. NEXT:   App='Aug 10' vs Algo='Oct 09'
+  • RUN-019 (2026-10-08 22:37:37) | Profile: Richie | Stepper Length: 32d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 13'
+      EST. NEXT:   App='Aug 12' vs Algo='Oct 15'
+  • RUN-020 (2026-10-08 22:41:53) | Profile: Richie | Stepper Length: 33d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 15'
+      EST. NEXT:   App='Aug 13' vs Algo='Oct 18'
+  • RUN-021 (2026-10-08 22:46:09) | Profile: Richie | Stepper Length: 34d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 17'
+      EST. NEXT:   App='Aug 14' vs Algo='Oct 21'
+  • RUN-022 (2026-10-08 22:50:28) | Profile: Richie | Stepper Length: 35d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 19'
+      EST. NEXT:   App='Aug 15' vs Algo='Oct 24'
+  • RUN-023 (2026-10-08 22:54:46) | Profile: Richie | Stepper Length: 36d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 21'
+      EST. NEXT:   App='Aug 16' vs Algo='Oct 27'
+  • RUN-024 (2026-10-08 22:59:07) | Profile: Richie | Stepper Length: 37d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 23'
+      EST. NEXT:   App='Aug 17' vs Algo='Oct 30'
+  • RUN-025 (2026-10-08 23:03:25) | Profile: Richie | Stepper Length: 38d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 25'
+      EST. NEXT:   App='Aug 18' vs Algo='Nov 02'
+  • RUN-026 (2026-10-08 23:07:49) | Profile: Richie | Stepper Length: 39d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 27'
+      EST. NEXT:   App='Aug 19' vs Algo='Nov 05'
+  • RUN-027 (2026-10-08 23:12:10) | Profile: Richie | Stepper Length: 40d
+      LAST PERIOD: App='Jul 11' vs Algo='Sep 29'
+      EST. NEXT:   App='Aug 20' vs Algo='Nov 08'
+  • RUN-028 (2026-10-08 23:16:33) | Profile: Richie | Stepper Length: 41d
+      LAST PERIOD: App='Jul 11' vs Algo='Oct 01'
+      EST. NEXT:   App='Aug 21' vs Algo='Nov 11'
+  • RUN-029 (2026-10-08 23:20:55) | Profile: Richie | Stepper Length: 42d
+      LAST PERIOD: App='Jul 11' vs Algo='Oct 03'
+      EST. NEXT:   App='Aug 22' vs Algo='Nov 14'
+  • RUN-030 (2026-10-08 23:25:20) | Profile: Richie | Stepper Length: 43d
+      LAST PERIOD: App='Jul 11' vs Algo='Oct 05'
+      EST. NEXT:   App='Aug 23' vs Algo='Nov 17'
+  • RUN-031 (2026-10-08 23:29:44) | Profile: Richie | Stepper Length: 44d
+      LAST PERIOD: App='Jul 11' vs Algo='Oct 07'
+      EST. NEXT:   App='Aug 24' vs Algo='Nov 20'
+  • RUN-032 (2026-10-08 23:33:40) | Profile: Richie | Stepper Length: 45d
+      LAST PERIOD: App='Jul 11' vs Algo='Aug 25'
+      EST. NEXT:   App='Aug 25' vs Algo='Oct 09'
+  • RUN-033 (2026-10-08 23:38:06) | Profile: Richie | Stepper Length: 15d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 30'
+      EST. NEXT:   App='Aug 16' vs Algo='Oct 15'
+  • RUN-034 (2026-10-08 23:42:30) | Profile: Richie | Stepper Length: 16d
+      LAST PERIOD: App='Aug 01' vs Algo='Oct 04'
+      EST. NEXT:   App='Aug 17' vs Algo='Oct 20'
+  • RUN-035 (2026-10-08 23:46:55) | Profile: Richie | Stepper Length: 17d
+      LAST PERIOD: App='Aug 01' vs Algo='Oct 08'
+      EST. NEXT:   App='Aug 18' vs Algo='Oct 25'
+  • RUN-036 (2026-10-08 23:51:20) | Profile: Richie | Stepper Length: 18d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 24'
+      EST. NEXT:   App='Aug 19' vs Algo='Oct 12'
+  • RUN-037 (2026-10-08 23:55:44) | Profile: Richie | Stepper Length: 19d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 27'
+      EST. NEXT:   App='Aug 20' vs Algo='Oct 16'
+  • RUN-038 (2026-10-09 00:00:07) | Profile: Richie | Stepper Length: 20d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 30'
+      EST. NEXT:   App='Aug 21' vs Algo='Oct 20'
+  • RUN-039 (2026-10-09 00:04:18) | Profile: Richie | Stepper Length: 21d
+      LAST PERIOD: App='Aug 01' vs Algo='Oct 03'
+      EST. NEXT:   App='Aug 22' vs Algo='Oct 24'
+  • RUN-040 (2026-10-09 00:08:40) | Profile: Richie | Stepper Length: 22d
+      LAST PERIOD: App='Aug 01' vs Algo='Oct 06'
+      EST. NEXT:   App='Aug 23' vs Algo='Oct 28'
+  • RUN-041 (2026-10-09 00:13:01) | Profile: Richie | Stepper Length: 23d
+      LAST PERIOD: App='Aug 01' vs Algo='Oct 09'
+      EST. NEXT:   App='Aug 24' vs Algo='Nov 01'
+  • RUN-042 (2026-10-09 00:17:24) | Profile: Richie | Stepper Length: 24d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 18'
+      EST. NEXT:   App='Aug 25' vs Algo='Oct 12'
+  • RUN-043 (2026-10-09 00:21:45) | Profile: Richie | Stepper Length: 25d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 20'
+      EST. NEXT:   App='Aug 26' vs Algo='Oct 15'
+  • RUN-044 (2026-10-09 00:26:05) | Profile: Richie | Stepper Length: 26d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 22'
+      EST. NEXT:   App='Aug 27' vs Algo='Oct 18'
+  • RUN-045 (2026-10-09 00:30:26) | Profile: Richie | Stepper Length: 27d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 24'
+      EST. NEXT:   App='Aug 28' vs Algo='Oct 21'
+  • RUN-046 (2026-10-09 00:34:48) | Profile: Richie | Stepper Length: 28d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 26'
+      EST. NEXT:   App='Aug 29' vs Algo='Oct 24'
+  • RUN-047 (2026-10-09 00:39:10) | Profile: Richie | Stepper Length: 29d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 28'
+      EST. NEXT:   App='Aug 30' vs Algo='Oct 27'
+  • RUN-048 (2026-10-09 00:43:29) | Profile: Richie | Stepper Length: 30d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 30'
+      EST. NEXT:   App='Aug 31' vs Algo='Oct 30'
+  • RUN-049 (2026-10-09 00:47:52) | Profile: Richie | Stepper Length: 31d
+      LAST PERIOD: App='Aug 01' vs Algo='Oct 02'
+      EST. NEXT:   App='Sep 01' vs Algo='Nov 02'
+  • RUN-050 (2026-10-09 00:52:15) | Profile: Richie | Stepper Length: 32d
+      LAST PERIOD: App='Aug 01' vs Algo='Oct 04'
+      EST. NEXT:   App='Sep 02' vs Algo='Nov 05'
+  • RUN-051 (2026-10-09 00:56:38) | Profile: Richie | Stepper Length: 33d
+      LAST PERIOD: App='Aug 01' vs Algo='Oct 06'
+      EST. NEXT:   App='Sep 03' vs Algo='Nov 08'
+  • RUN-052 (2026-10-09 01:01:02) | Profile: Richie | Stepper Length: 34d
+      LAST PERIOD: App='Aug 01' vs Algo='Oct 08'
+      EST. NEXT:   App='Sep 04' vs Algo='Nov 11'
+  • RUN-053 (2026-10-09 01:04:56) | Profile: Richie | Stepper Length: 35d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 05'
+      EST. NEXT:   App='Sep 05' vs Algo='Oct 10'
+  • RUN-054 (2026-10-09 01:08:50) | Profile: Richie | Stepper Length: 36d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 06'
+      EST. NEXT:   App='Sep 06' vs Algo='Oct 12'
+  • RUN-055 (2026-10-09 01:12:46) | Profile: Richie | Stepper Length: 37d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 07'
+      EST. NEXT:   App='Sep 07' vs Algo='Oct 14'
+  • RUN-056 (2026-10-09 01:16:43) | Profile: Richie | Stepper Length: 38d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 08'
+      EST. NEXT:   App='Sep 08' vs Algo='Oct 16'
+  • RUN-057 (2026-10-09 01:20:41) | Profile: Richie | Stepper Length: 39d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 09'
+      EST. NEXT:   App='Sep 09' vs Algo='Oct 18'
+  • RUN-058 (2026-10-09 01:24:38) | Profile: Richie | Stepper Length: 40d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 10'
+      EST. NEXT:   App='Sep 10' vs Algo='Oct 20'
+  • RUN-059 (2026-10-09 01:28:35) | Profile: Richie | Stepper Length: 41d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 11'
+      EST. NEXT:   App='Sep 11' vs Algo='Oct 22'
+  • RUN-060 (2026-10-09 01:32:40) | Profile: Richie | Stepper Length: 42d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 12'
+      EST. NEXT:   App='Sep 12' vs Algo='Oct 24'
+  • RUN-061 (2026-10-09 01:36:41) | Profile: Richie | Stepper Length: 43d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 13'
+      EST. NEXT:   App='Sep 13' vs Algo='Oct 26'
+  • RUN-062 (2026-10-09 01:40:41) | Profile: Richie | Stepper Length: 44d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 14'
+      EST. NEXT:   App='Sep 14' vs Algo='Oct 28'
+  • RUN-063 (2026-10-09 01:44:44) | Profile: Richie | Stepper Length: 45d
+      LAST PERIOD: App='Aug 01' vs Algo='Sep 15'
+      EST. NEXT:   App='Sep 15' vs Algo='Oct 30'
+  • RUN-065 (2026-10-09 01:53:45) | Profile: Richie | Stepper Length: 16d
+      LAST PERIOD: App='Sep 01' vs Algo='Oct 03'
+      EST. NEXT:   App='Sep 17' vs Algo='Oct 19'
+  • RUN-066 (2026-10-09 01:58:19) | Profile: Richie | Stepper Length: 17d
+      LAST PERIOD: App='Sep 01' vs Algo='Oct 05'
+      EST. NEXT:   App='Sep 18' vs Algo='Oct 22'
+  • RUN-067 (2026-10-09 02:02:51) | Profile: Richie | Stepper Length: 18d
+      LAST PERIOD: App='Sep 01' vs Algo='Oct 07'
+      EST. NEXT:   App='Sep 19' vs Algo='Oct 25'
+  • RUN-068 (2026-10-09 02:07:22) | Profile: Richie | Stepper Length: 19d
+      LAST PERIOD: App='Sep 01' vs Algo='Oct 09'
+      EST. NEXT:   App='Sep 20' vs Algo='Oct 28'
+  • RUN-069 (2026-10-09 02:11:23) | Profile: Richie | Stepper Length: 20d
+      LAST PERIOD: App='Sep 01' vs Algo='Sep 21'
+      EST. NEXT:   App='Sep 21' vs Algo='Oct 11'
+  • RUN-070 (2026-10-09 02:15:24) | Profile: Richie | Stepper Length: 21d
+      LAST PERIOD: App='Sep 01' vs Algo='Sep 22'
+      EST. NEXT:   App='Sep 22' vs Algo='Oct 13'
+  • RUN-071 (2026-10-09 02:19:23) | Profile: Richie | Stepper Length: 22d
+      LAST PERIOD: App='Sep 01' vs Algo='Sep 23'
+      EST. NEXT:   App='Sep 23' vs Algo='Oct 15'
+  • RUN-072 (2026-10-09 02:23:24) | Profile: Richie | Stepper Length: 23d
+      LAST PERIOD: App='Sep 01' vs Algo='Sep 24'
+      EST. NEXT:   App='Sep 24' vs Algo='Oct 17'
+  • RUN-073 (2026-10-09 02:27:24) | Profile: Richie | Stepper Length: 24d
+      LAST PERIOD: App='Sep 01' vs Algo='Sep 25'
+      EST. NEXT:   App='Sep 25' vs Algo='Oct 19'
+  • RUN-074 (2026-10-09 02:31:22) | Profile: Richie | Stepper Length: 25d
+      LAST PERIOD: App='Sep 01' vs Algo='Sep 26'
+      EST. NEXT:   App='Sep 26' vs Algo='Oct 21'
+  • RUN-075 (2026-10-09 02:35:20) | Profile: Richie | Stepper Length: 26d
+      LAST PERIOD: App='Sep 01' vs Algo='Sep 27'
+      EST. NEXT:   App='Sep 27' vs Algo='Oct 23'
+  • RUN-076 (2026-10-09 02:39:16) | Profile: Richie | Stepper Length: 27d
+      LAST PERIOD: App='Sep 01' vs Algo='Sep 28'
+      EST. NEXT:   App='Sep 28' vs Algo='Oct 25'
+  • RUN-077 (2026-10-09 02:43:13) | Profile: Richie | Stepper Length: 28d
+      LAST PERIOD: App='Sep 01' vs Algo='Sep 29'
+      EST. NEXT:   App='Sep 29' vs Algo='Oct 27'
+  • RUN-078 (2026-10-09 02:47:12) | Profile: Richie | Stepper Length: 29d
+      LAST PERIOD: App='Sep 01' vs Algo='Sep 30'
+      EST. NEXT:   App='Sep 30' vs Algo='Oct 29'
+  • RUN-081 (2026-10-09 02:59:11) | Profile: Richie | Stepper Length: 32d
+      LAST PERIOD: App='Sep 01' vs Algo='Oct 03'
+      EST. NEXT:   App='Oct 03' vs Algo='Nov 04'
+  • RUN-082 (2026-10-09 03:03:12) | Profile: Richie | Stepper Length: 33d
+      LAST PERIOD: App='Sep 01' vs Algo='Oct 04'
+      EST. NEXT:   App='Oct 04' vs Algo='Nov 06'
+
+
+4. EXPECTED VS ACTUAL BEHAVIOR
+--------------------------------------------------------------------------------
+EXPECTED:
+  `LAST PERIOD` must reflect the most recent cycle start date prior to today.
+  `EST. NEXT` must reflect the future projected period start date.
+
+ACTUAL:
+  Both fields display obsolete dates that occurred months ago.
+
+
+5. RECOMMENDED FIX
+--------------------------------------------------------------------------------
+1. Calculate `last_period_start` as the maximum period start date `<= current_date`.
+2. Calculate `est_next_period` as `last_period_start + avg_cycle_length`.
+================================================================================

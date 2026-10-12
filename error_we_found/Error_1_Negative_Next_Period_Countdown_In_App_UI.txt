@@ -1,0 +1,386 @@
+================================================================================
+ERROR REPORT 1: Negative Next Period Countdown Displayed in Mobile App UI
+Source: cycle_tracking_report.html (Test Run History & Cycle Algorithm Simulator)
+Category: App UI Computation Defect
+Severity: Critical
+Total Affected Runs: 82 of 82 Runs
+================================================================================
+
+1. ERROR DESCRIPTION
+--------------------------------------------------------------------------------
+On the Curapod mobile app home dashboard and Cycle Tracking screen, the 
+"NEXT PERIOD" metric renders an invalid negative countdown string (for example, 
+"In -74 days", "In -73 days", "In -44 days", "In -12 days").
+Meanwhile, both reference clinical algorithms (1st Algo and 2nd Algo) compute 
+valid, positive future countdowns (such as "In 1 days", "In 7 days", "In 14 days").
+
+
+2. ROOT CAUSE ANALYSIS (WHY IT FAILED)
+--------------------------------------------------------------------------------
+1. No Forward Recurrence Projection on Mobile UI:
+   When a user inputs a past cycle (for instance, a cycle in July 2026), the mobile 
+   app UI calculates the remaining days to the next period by performing a raw date 
+   difference between the entered historical cycle end date and the device's current date:
+   `countdown = (historical_next_period_date - current_device_date).days`
+   Since the entered date was months in the past, this arithmetic produces a negative number 
+   (e.g., -73 days), which the app naively formats into "In -73 days".
+
+2. Divergence from Clinical Algorithm:
+   Both the first algorithm (`cycle_predictor_algorithm.py`) and second algorithm 
+   (`second_cycle_algorithm.py`) correctly forward-project subsequent cycles using 
+   the user's average cycle length until a cycle boundary in the present or future is 
+   reached. The app client completely lacks this forward projection engine.
+
+
+3. AFFECTED RUNS (ALL 82 INSTANCES FROM THE HTML REPORT)
+--------------------------------------------------------------------------------
+  • RUN-001 (2026-10-08 21:19:57) | Profile: Richie | Cycle Length: 16d
+      App UI Display:     'In -73 days'
+      1st Algo Projected: 'In 7 days'
+      2nd Algo Projected: 'In 7 days'
+  • RUN-002 (2026-10-08 21:24:25) | Profile: Richie | Cycle Length: 15d
+      App UI Display:     'In -74 days'
+      1st Algo Projected: 'In 1 days'
+      2nd Algo Projected: 'In 1 days'
+  • RUN-003 (2026-10-08 21:28:49) | Profile: Richie | Cycle Length: 16d
+      App UI Display:     'In -73 days'
+      1st Algo Projected: 'In 7 days'
+      2nd Algo Projected: 'In 7 days'
+  • RUN-004 (2026-10-08 21:33:11) | Profile: Richie | Cycle Length: 17d
+      App UI Display:     'In -72 days'
+      1st Algo Projected: 'In 13 days'
+      2nd Algo Projected: 'In 13 days'
+  • RUN-005 (2026-10-08 21:37:34) | Profile: Richie | Cycle Length: 18d
+      App UI Display:     'In -71 days'
+      1st Algo Projected: 'In 1 days'
+      2nd Algo Projected: 'In 1 days'
+  • RUN-006 (2026-10-08 21:41:58) | Profile: Richie | Cycle Length: 19d
+      App UI Display:     'In -70 days'
+      1st Algo Projected: 'In 6 days'
+      2nd Algo Projected: 'In 6 days'
+  • RUN-007 (2026-10-08 21:46:19) | Profile: Richie | Cycle Length: 20d
+      App UI Display:     'In -69 days'
+      1st Algo Projected: 'In 11 days'
+      2nd Algo Projected: 'In 11 days'
+  • RUN-008 (2026-10-08 21:50:40) | Profile: Richie | Cycle Length: 21d
+      App UI Display:     'In -68 days'
+      1st Algo Projected: 'In 16 days'
+      2nd Algo Projected: 'In 16 days'
+  • RUN-009 (2026-10-08 21:55:05) | Profile: Richie | Cycle Length: 22d
+      App UI Display:     'In -67 days'
+      1st Algo Projected: 'In 21 days'
+      2nd Algo Projected: 'In 21 days'
+  • RUN-010 (2026-10-08 21:59:25) | Profile: Richie | Cycle Length: 23d
+      App UI Display:     'In -66 days'
+      1st Algo Projected: 'In 3 days'
+      2nd Algo Projected: 'In 3 days'
+  • RUN-011 (2026-10-08 22:03:44) | Profile: Richie | Cycle Length: 24d
+      App UI Display:     'In -65 days'
+      1st Algo Projected: 'In 7 days'
+      2nd Algo Projected: 'In 7 days'
+  • RUN-012 (2026-10-08 22:07:57) | Profile: Richie | Cycle Length: 25d
+      App UI Display:     'In -64 days'
+      1st Algo Projected: 'In 11 days'
+      2nd Algo Projected: 'In 11 days'
+  • RUN-013 (2026-10-08 22:12:12) | Profile: Richie | Cycle Length: 26d
+      App UI Display:     'In -63 days'
+      1st Algo Projected: 'In 15 days'
+      2nd Algo Projected: 'In 15 days'
+  • RUN-014 (2026-10-08 22:16:26) | Profile: Richie | Cycle Length: 27d
+      App UI Display:     'In -62 days'
+      1st Algo Projected: 'In 19 days'
+      2nd Algo Projected: 'In 19 days'
+  • RUN-015 (2026-10-08 22:20:42) | Profile: Richie | Cycle Length: 28d
+      App UI Display:     'In -61 days'
+      1st Algo Projected: 'In 23 days'
+      2nd Algo Projected: 'In 23 days'
+  • RUN-016 (2026-10-08 22:24:56) | Profile: Richie | Cycle Length: 29d
+      App UI Display:     'In -60 days'
+      1st Algo Projected: 'In 27 days'
+      2nd Algo Projected: 'In 27 days'
+  • RUN-017 (2026-10-08 22:29:10) | Profile: Richie | Cycle Length: 30d
+      App UI Display:     'In -59 days'
+      1st Algo Projected: 'In 1 days'
+      2nd Algo Projected: 'In 1 days'
+  • RUN-018 (2026-10-08 22:33:23) | Profile: Richie | Cycle Length: 31d
+      App UI Display:     'In -58 days'
+      1st Algo Projected: 'In 4 days'
+      2nd Algo Projected: 'In 4 days'
+  • RUN-019 (2026-10-08 22:37:37) | Profile: Richie | Cycle Length: 32d
+      App UI Display:     'In -57 days'
+      1st Algo Projected: 'In 7 days'
+      2nd Algo Projected: 'In 7 days'
+  • RUN-020 (2026-10-08 22:41:53) | Profile: Richie | Cycle Length: 33d
+      App UI Display:     'In -56 days'
+      1st Algo Projected: 'In 10 days'
+      2nd Algo Projected: 'In 10 days'
+  • RUN-021 (2026-10-08 22:46:09) | Profile: Richie | Cycle Length: 34d
+      App UI Display:     'In -55 days'
+      1st Algo Projected: 'In 13 days'
+      2nd Algo Projected: 'In 13 days'
+  • RUN-022 (2026-10-08 22:50:28) | Profile: Richie | Cycle Length: 35d
+      App UI Display:     'In -54 days'
+      1st Algo Projected: 'In 16 days'
+      2nd Algo Projected: 'In 16 days'
+  • RUN-023 (2026-10-08 22:54:46) | Profile: Richie | Cycle Length: 36d
+      App UI Display:     'In -53 days'
+      1st Algo Projected: 'In 19 days'
+      2nd Algo Projected: 'In 19 days'
+  • RUN-024 (2026-10-08 22:59:07) | Profile: Richie | Cycle Length: 37d
+      App UI Display:     'In -52 days'
+      1st Algo Projected: 'In 22 days'
+      2nd Algo Projected: 'In 22 days'
+  • RUN-025 (2026-10-08 23:03:25) | Profile: Richie | Cycle Length: 38d
+      App UI Display:     'In -51 days'
+      1st Algo Projected: 'In 25 days'
+      2nd Algo Projected: 'In 25 days'
+  • RUN-026 (2026-10-08 23:07:49) | Profile: Richie | Cycle Length: 39d
+      App UI Display:     'In -50 days'
+      1st Algo Projected: 'In 28 days'
+      2nd Algo Projected: 'In 28 days'
+  • RUN-027 (2026-10-08 23:12:10) | Profile: Richie | Cycle Length: 40d
+      App UI Display:     'In -49 days'
+      1st Algo Projected: 'In 31 days'
+      2nd Algo Projected: 'In 31 days'
+  • RUN-028 (2026-10-08 23:16:33) | Profile: Richie | Cycle Length: 41d
+      App UI Display:     'In -48 days'
+      1st Algo Projected: 'In 34 days'
+      2nd Algo Projected: 'In 34 days'
+  • RUN-029 (2026-10-08 23:20:55) | Profile: Richie | Cycle Length: 42d
+      App UI Display:     'In -47 days'
+      1st Algo Projected: 'In 37 days'
+      2nd Algo Projected: 'In 37 days'
+  • RUN-030 (2026-10-08 23:25:20) | Profile: Richie | Cycle Length: 43d
+      App UI Display:     'In -46 days'
+      1st Algo Projected: 'In 40 days'
+      2nd Algo Projected: 'In 40 days'
+  • RUN-031 (2026-10-08 23:29:44) | Profile: Richie | Cycle Length: 44d
+      App UI Display:     'In -45 days'
+      1st Algo Projected: 'In 43 days'
+      2nd Algo Projected: 'In 43 days'
+  • RUN-032 (2026-10-08 23:33:40) | Profile: Richie | Cycle Length: 45d
+      App UI Display:     'In -44 days'
+      1st Algo Projected: 'In 1 days'
+      2nd Algo Projected: 'In 1 days'
+  • RUN-033 (2026-10-08 23:38:06) | Profile: Richie | Cycle Length: 15d
+      App UI Display:     'In -53 days'
+      1st Algo Projected: 'In 7 days'
+      2nd Algo Projected: 'In 7 days'
+  • RUN-034 (2026-10-08 23:42:30) | Profile: Richie | Cycle Length: 16d
+      App UI Display:     'In -52 days'
+      1st Algo Projected: 'In 12 days'
+      2nd Algo Projected: 'In 12 days'
+  • RUN-035 (2026-10-08 23:46:55) | Profile: Richie | Cycle Length: 17d
+      App UI Display:     'In -51 days'
+      1st Algo Projected: 'In 17 days'
+      2nd Algo Projected: 'In 17 days'
+  • RUN-036 (2026-10-08 23:51:20) | Profile: Richie | Cycle Length: 18d
+      App UI Display:     'In -50 days'
+      1st Algo Projected: 'In 4 days'
+      2nd Algo Projected: 'In 4 days'
+  • RUN-037 (2026-10-08 23:55:44) | Profile: Richie | Cycle Length: 19d
+      App UI Display:     'In -49 days'
+      1st Algo Projected: 'In 8 days'
+      2nd Algo Projected: 'In 8 days'
+  • RUN-038 (2026-10-09 00:00:07) | Profile: Richie | Cycle Length: 20d
+      App UI Display:     'In -48 days'
+      1st Algo Projected: 'In 11 days'
+      2nd Algo Projected: 'In 11 days'
+  • RUN-039 (2026-10-09 00:04:18) | Profile: Richie | Cycle Length: 21d
+      App UI Display:     'In -48 days'
+      1st Algo Projected: 'In 15 days'
+      2nd Algo Projected: 'In 15 days'
+  • RUN-040 (2026-10-09 00:08:40) | Profile: Richie | Cycle Length: 22d
+      App UI Display:     'In -47 days'
+      1st Algo Projected: 'In 19 days'
+      2nd Algo Projected: 'In 19 days'
+  • RUN-041 (2026-10-09 00:13:01) | Profile: Richie | Cycle Length: 23d
+      App UI Display:     'In -46 days'
+      1st Algo Projected: 'In 23 days'
+      2nd Algo Projected: 'In 23 days'
+  • RUN-042 (2026-10-09 00:17:24) | Profile: Richie | Cycle Length: 24d
+      App UI Display:     'In -45 days'
+      1st Algo Projected: 'In 3 days'
+      2nd Algo Projected: 'In 3 days'
+  • RUN-043 (2026-10-09 00:21:45) | Profile: Richie | Cycle Length: 25d
+      App UI Display:     'In -44 days'
+      1st Algo Projected: 'In 6 days'
+      2nd Algo Projected: 'In 6 days'
+  • RUN-044 (2026-10-09 00:26:05) | Profile: Richie | Cycle Length: 26d
+      App UI Display:     'In -43 days'
+      1st Algo Projected: 'In 9 days'
+      2nd Algo Projected: 'In 9 days'
+  • RUN-045 (2026-10-09 00:30:26) | Profile: Richie | Cycle Length: 27d
+      App UI Display:     'In -42 days'
+      1st Algo Projected: 'In 12 days'
+      2nd Algo Projected: 'In 12 days'
+  • RUN-046 (2026-10-09 00:34:48) | Profile: Richie | Cycle Length: 28d
+      App UI Display:     'In -41 days'
+      1st Algo Projected: 'In 15 days'
+      2nd Algo Projected: 'In 15 days'
+  • RUN-047 (2026-10-09 00:39:10) | Profile: Richie | Cycle Length: 29d
+      App UI Display:     'In -40 days'
+      1st Algo Projected: 'In 18 days'
+      2nd Algo Projected: 'In 18 days'
+  • RUN-048 (2026-10-09 00:43:29) | Profile: Richie | Cycle Length: 30d
+      App UI Display:     'In -39 days'
+      1st Algo Projected: 'In 21 days'
+      2nd Algo Projected: 'In 21 days'
+  • RUN-049 (2026-10-09 00:47:52) | Profile: Richie | Cycle Length: 31d
+      App UI Display:     'In -38 days'
+      1st Algo Projected: 'In 24 days'
+      2nd Algo Projected: 'In 24 days'
+  • RUN-050 (2026-10-09 00:52:15) | Profile: Richie | Cycle Length: 32d
+      App UI Display:     'In -37 days'
+      1st Algo Projected: 'In 27 days'
+      2nd Algo Projected: 'In 27 days'
+  • RUN-051 (2026-10-09 00:56:38) | Profile: Richie | Cycle Length: 33d
+      App UI Display:     'In -36 days'
+      1st Algo Projected: 'In 30 days'
+      2nd Algo Projected: 'In 30 days'
+  • RUN-052 (2026-10-09 01:01:02) | Profile: Richie | Cycle Length: 34d
+      App UI Display:     'In -35 days'
+      1st Algo Projected: 'In 33 days'
+      2nd Algo Projected: 'In 33 days'
+  • RUN-053 (2026-10-09 01:04:56) | Profile: Richie | Cycle Length: 35d
+      App UI Display:     'In -34 days'
+      1st Algo Projected: 'In 1 days'
+      2nd Algo Projected: 'In 1 days'
+  • RUN-054 (2026-10-09 01:08:50) | Profile: Richie | Cycle Length: 36d
+      App UI Display:     'In -33 days'
+      1st Algo Projected: 'In 3 days'
+      2nd Algo Projected: 'In 3 days'
+  • RUN-055 (2026-10-09 01:12:46) | Profile: Richie | Cycle Length: 37d
+      App UI Display:     'In -32 days'
+      1st Algo Projected: 'In 5 days'
+      2nd Algo Projected: 'In 5 days'
+  • RUN-056 (2026-10-09 01:16:43) | Profile: Richie | Cycle Length: 38d
+      App UI Display:     'In -31 days'
+      1st Algo Projected: 'In 7 days'
+      2nd Algo Projected: 'In 7 days'
+  • RUN-057 (2026-10-09 01:20:41) | Profile: Richie | Cycle Length: 39d
+      App UI Display:     'In -30 days'
+      1st Algo Projected: 'In 9 days'
+      2nd Algo Projected: 'In 9 days'
+  • RUN-058 (2026-10-09 01:24:38) | Profile: Richie | Cycle Length: 40d
+      App UI Display:     'In -29 days'
+      1st Algo Projected: 'In 11 days'
+      2nd Algo Projected: 'In 11 days'
+  • RUN-059 (2026-10-09 01:28:35) | Profile: Richie | Cycle Length: 41d
+      App UI Display:     'In -28 days'
+      1st Algo Projected: 'In 13 days'
+      2nd Algo Projected: 'In 13 days'
+  • RUN-060 (2026-10-09 01:32:40) | Profile: Richie | Cycle Length: 42d
+      App UI Display:     'In -27 days'
+      1st Algo Projected: 'In 15 days'
+      2nd Algo Projected: 'In 15 days'
+  • RUN-061 (2026-10-09 01:36:41) | Profile: Richie | Cycle Length: 43d
+      App UI Display:     'In -26 days'
+      1st Algo Projected: 'In 17 days'
+      2nd Algo Projected: 'In 17 days'
+  • RUN-062 (2026-10-09 01:40:41) | Profile: Richie | Cycle Length: 44d
+      App UI Display:     'In -25 days'
+      1st Algo Projected: 'In 19 days'
+      2nd Algo Projected: 'In 19 days'
+  • RUN-063 (2026-10-09 01:44:44) | Profile: Richie | Cycle Length: 45d
+      App UI Display:     'In -24 days'
+      1st Algo Projected: 'In 21 days'
+      2nd Algo Projected: 'In 21 days'
+  • RUN-064 (2026-10-09 01:49:15) | Profile: Richie | Cycle Length: 15d
+      App UI Display:     'In -23 days'
+      1st Algo Projected: 'In 7 days'
+      2nd Algo Projected: 'In 7 days'
+  • RUN-065 (2026-10-09 01:53:45) | Profile: Richie | Cycle Length: 16d
+      App UI Display:     'In -22 days'
+      1st Algo Projected: 'In 10 days'
+      2nd Algo Projected: 'In 10 days'
+  • RUN-066 (2026-10-09 01:58:19) | Profile: Richie | Cycle Length: 17d
+      App UI Display:     'In -21 days'
+      1st Algo Projected: 'In 13 days'
+      2nd Algo Projected: 'In 13 days'
+  • RUN-067 (2026-10-09 02:02:51) | Profile: Richie | Cycle Length: 18d
+      App UI Display:     'In -20 days'
+      1st Algo Projected: 'In 16 days'
+      2nd Algo Projected: 'In 16 days'
+  • RUN-068 (2026-10-09 02:07:22) | Profile: Richie | Cycle Length: 19d
+      App UI Display:     'In -19 days'
+      1st Algo Projected: 'In 19 days'
+      2nd Algo Projected: 'In 19 days'
+  • RUN-069 (2026-10-09 02:11:23) | Profile: Richie | Cycle Length: 20d
+      App UI Display:     'In -18 days'
+      1st Algo Projected: 'In 2 days'
+      2nd Algo Projected: 'In 2 days'
+  • RUN-070 (2026-10-09 02:15:24) | Profile: Richie | Cycle Length: 21d
+      App UI Display:     'In -17 days'
+      1st Algo Projected: 'In 4 days'
+      2nd Algo Projected: 'In 4 days'
+  • RUN-071 (2026-10-09 02:19:23) | Profile: Richie | Cycle Length: 22d
+      App UI Display:     'In -16 days'
+      1st Algo Projected: 'In 6 days'
+      2nd Algo Projected: 'In 6 days'
+  • RUN-072 (2026-10-09 02:23:24) | Profile: Richie | Cycle Length: 23d
+      App UI Display:     'In -15 days'
+      1st Algo Projected: 'In 8 days'
+      2nd Algo Projected: 'In 8 days'
+  • RUN-073 (2026-10-09 02:27:24) | Profile: Richie | Cycle Length: 24d
+      App UI Display:     'In -14 days'
+      1st Algo Projected: 'In 10 days'
+      2nd Algo Projected: 'In 10 days'
+  • RUN-074 (2026-10-09 02:31:22) | Profile: Richie | Cycle Length: 25d
+      App UI Display:     'In -13 days'
+      1st Algo Projected: 'In 12 days'
+      2nd Algo Projected: 'In 12 days'
+  • RUN-075 (2026-10-09 02:35:20) | Profile: Richie | Cycle Length: 26d
+      App UI Display:     'In -12 days'
+      1st Algo Projected: 'In 14 days'
+      2nd Algo Projected: 'In 14 days'
+  • RUN-076 (2026-10-09 02:39:16) | Profile: Richie | Cycle Length: 27d
+      App UI Display:     'In -11 days'
+      1st Algo Projected: 'In 16 days'
+      2nd Algo Projected: 'In 16 days'
+  • RUN-077 (2026-10-09 02:43:13) | Profile: Richie | Cycle Length: 28d
+      App UI Display:     'In -10 days'
+      1st Algo Projected: 'In 18 days'
+      2nd Algo Projected: 'In 18 days'
+  • RUN-078 (2026-10-09 02:47:12) | Profile: Richie | Cycle Length: 29d
+      App UI Display:     'In -9 days'
+      1st Algo Projected: 'In 20 days'
+      2nd Algo Projected: 'In 20 days'
+  • RUN-079 (2026-10-09 02:51:10) | Profile: Richie | Cycle Length: 30d
+      App UI Display:     'In -8 days'
+      1st Algo Projected: 'In 22 days'
+      2nd Algo Projected: 'In 22 days'
+  • RUN-080 (2026-10-09 02:55:10) | Profile: Richie | Cycle Length: 31d
+      App UI Display:     'In -7 days'
+      1st Algo Projected: 'In 24 days'
+      2nd Algo Projected: 'In 24 days'
+  • RUN-081 (2026-10-09 02:59:11) | Profile: Richie | Cycle Length: 32d
+      App UI Display:     'In -6 days'
+      1st Algo Projected: 'In 26 days'
+      2nd Algo Projected: 'In 26 days'
+  • RUN-082 (2026-10-09 03:03:12) | Profile: Richie | Cycle Length: 33d
+      App UI Display:     'In -5 days'
+      1st Algo Projected: 'In 28 days'
+      2nd Algo Projected: 'In 28 days'
+
+
+4. EXPECTED VS ACTUAL BEHAVIOR
+--------------------------------------------------------------------------------
+EXPECTED:
+  The app UI should project cycles forward and display a positive, valid countdown:
+  e.g. "In 7 days", "In 1 days", "In 14 days". Under no circumstances should a 
+  negative number ("In -XX days") ever be displayed to the end user.
+
+ACTUAL:
+  The app UI displays "In -XX days" across 82 test runs.
+
+
+5. RECOMMENDED FIX
+--------------------------------------------------------------------------------
+1. In the mobile app's cycle calculation module, add a recurring cycle projector:
+   While `projected_next_period < today`:
+       `projected_next_period += avg_cycle_length_days`
+2. Apply a validation guard on the UI label formatting:
+   If `days_until_next < 0`, trigger recalculation or display "Period overdue" 
+   instead of formatting a negative integer into "In -XX days".
+================================================================================

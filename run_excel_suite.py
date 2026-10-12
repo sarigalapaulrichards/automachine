@@ -51,11 +51,29 @@ def load_excel_iterations(excel_path=EXCEL_PATH):
     return tpt.load_excel_iterations(excel_path)
 
 
+# Dataset specified by user prompt:
+# count | dates | cycle_length | status | close the app after the My Cycle page
+USER_SPECIFIED_DATASET = [
+    {"iteration_num": 1, "row_index": 1, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 15, "skip_session": True, "close_app": True},
+    {"iteration_num": 2, "row_index": 2, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 16, "skip_session": True, "close_app": False},
+    {"iteration_num": 3, "row_index": 3, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 17, "skip_session": True, "close_app": True},
+    {"iteration_num": 4, "row_index": 4, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 18, "skip_session": True, "close_app": True},
+    {"iteration_num": 5, "row_index": 5, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 19, "skip_session": True, "close_app": True},
+    {"iteration_num": 6, "row_index": 6, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 20, "skip_session": True, "close_app": True},
+    {"iteration_num": 7, "row_index": 7, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 21, "skip_session": True, "close_app": True},
+    {"iteration_num": 8, "row_index": 8, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 22, "skip_session": True, "close_app": True},
+    {"iteration_num": 9, "row_index": 9, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 23, "skip_session": True, "close_app": False},
+    {"iteration_num": 10, "row_index": 10, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 24, "skip_session": True, "close_app": False},
+    {"iteration_num": 11, "row_index": 11, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 25, "skip_session": True, "close_app": False},
+]
+
+
 def create_appium_driver():
     options = UiAutomator2Options()
     options.platform_name = "Android"
     options.automation_name = "UiAutomator2"
-    options.udid = tpt.DEVICE_UDID
+    options.udid = tpt.DEV_PROFILE.udid
+    options.set_capability("systemPort", tpt.DEV_PROFILE.system_port)
     options.app_package = tpt.APP_PACKAGE
     options.app_activity = tpt.APP_ACTIVITY
     options.no_reset = True
@@ -63,9 +81,11 @@ def create_appium_driver():
     options.set_capability("forceAppLaunch", True)
     options.set_capability("appWaitPackage", "*")
     options.set_capability("newCommandTimeout", 7200)
+    options.set_capability("ignoreHiddenApiPolicyError", True)
 
-    print("[Appium] Connecting to Appium server at http://127.0.0.1:4723...")
-    driver = webdriver.Remote("http://127.0.0.1:4723", options=options)
+    appium_url = tpt.APPIUM_HOST
+    print(f"[Appium] Connecting to Appium server at {appium_url} for {tpt.DEV_PROFILE.display_name} (SystemPort: {tpt.DEV_PROFILE.system_port})...")
+    driver = webdriver.Remote(appium_url, options=options)
     driver.implicitly_wait(0)
     return driver
 
@@ -126,6 +146,7 @@ def run_single_iteration(driver, iteration_data):
         tpt.verify_dashboard_screen(driver)
 
         # 4. Bluetooth pod connection and pain score test case OR skip
+        is_close_app = bool(iteration_data.get("close_app"))
         if not skip_session:
             b_score, a_score = 7, 2
             try:
@@ -135,7 +156,7 @@ def run_single_iteration(driver, iteration_data):
                 print(f"  Warning: pain score session error: {ps_err}")
                 tpt.CURRENT_RUN_DATA["outputs"]["pain_score"] = {"status": "FAIL", "error": str(ps_err)}
 
-            tpt.go_to_cycle_tab(driver)
+            tpt.go_to_cycle_tab(driver, suffix="before" if is_close_app else "")
             tpt.verify_pain_score_test_case(driver, expected_before=b_score, expected_after=a_score)
         else:
             print("\n" + "=" * 75)
@@ -155,9 +176,19 @@ def run_single_iteration(driver, iteration_data):
                 "details": "Skipped via Excel input (Direct Cycle run)"
             }
             # Directly navigate to My Cycle tab: captures all 4 calendar months & reads dynamic metrics
-            tpt.go_to_cycle_tab(driver)
+            tpt.go_to_cycle_tab(driver, suffix="before" if is_close_app else "")
 
-        # 5. Reset for next iteration: navigate to Profile and delete account
+        # 5. App Lifecycle Persistence Check (Close app after My Cycle -> reopen -> compare Home & My Cycle)
+        if iteration_data.get("close_app"):
+            tpt.verify_app_lifecycle_persistence(driver, iter_idx=iter_idx)
+        else:
+            print(f"  [App Lifecycle] 'close the app after My Cycle page' = No (lifecycle restart skipped for Iter #{iter_idx})")
+            tpt.CURRENT_RUN_DATA["outputs"]["app_lifecycle_persistence"] = {
+                "close_app_executed": False,
+                "overall_status": "SKIPPED (close_app=No)"
+            }
+
+        # 6. Reset for next iteration: navigate to Profile and delete account
         # (Photo step excluded as requested by user)
         tpt.go_to_profile(driver)
         tpt.delete_account(driver)
@@ -225,22 +256,29 @@ def run_single_iteration(driver, iteration_data):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run Curapod-M test suite driven by Excel sheet")
+    parser = argparse.ArgumentParser(description="Run Curapod-M test suite driven by Excel sheet or User Dataset")
     parser.add_argument("--excel", default=EXCEL_PATH, help=f"Path to Excel file (default: {EXCEL_PATH})")
+    parser.add_argument("--use-excel", action="store_true", help="Load test iterations from Excel instead of the default user prompt dataset")
     parser.add_argument("--start", type=int, default=1, help="Starting iteration number (1-based, default: 1)")
     parser.add_argument("--count", type=int, default=None, help="Number of iterations to run (default: all)")
     parser.add_argument("--row", type=int, default=None, help="Specific iteration number to run")
-    parser.add_argument("--keep-history", action="store_true", help="Do not clear existing HTML report history")
+    parser.add_argument("--clear-history", action="store_true", help="Clear existing HTML report history (default: False, keeps and appends history)")
     args = parser.parse_args()
 
     print("\n" + "#" * 80)
-    print("  CURAPOD-M EXCEL-DRIVEN TEST SUITE AUTOMATION")
-    print(f"  Excel Location: {args.excel}")
+    print("  CURAPOD-M AUTOMATED TEST SUITE EXECUTION")
+    print(f"  Source: {'Excel File: ' + args.excel if args.use_excel else 'User Prompt Dataset (Jul 13th 5days, lengths 15..25, close_app matrix)'}")
     print("#" * 80)
 
-    # 1. Parse Excel iterations
-    all_iterations = load_excel_iterations(args.excel)
-    print(f"\n[Excel Parser] Successfully loaded {len(all_iterations)} test iterations from Excel.")
+    # 1. Parse iterations (User specified dataset by default or Excel if --use-excel)
+    if args.use_excel:
+        all_iterations = load_excel_iterations(args.excel)
+        print(f"\n[Excel Parser] Successfully loaded {len(all_iterations)} test iterations from Excel.")
+    else:
+        all_iterations = USER_SPECIFIED_DATASET
+        print(f"\n[User Dataset] Loaded {len(all_iterations)} test iterations matching user prompt:")
+        for it in all_iterations:
+            print(f"    - Iter #{it['iteration_num']}: {it['raw_dates']} | {it['cycle_length']} days | Skip: {it['skip_session']} | Close App: {it['close_app']}")
 
     if args.row:
         target_iterations = [it for it in all_iterations if it["iteration_num"] == args.row]
@@ -254,35 +292,55 @@ def main():
 
     print(f"\n[Execution Plan] Selected {len(target_iterations)} iteration(s) to execute:")
     for it in target_iterations:
-        print(f"  • Iteration #{it['iteration_num']} (Row {it['row_index']}): {it['num_cycles']} cycles | {it['cycle_length']} days | Skip: {it['skip_session']} | Dates: {it['raw_dates']}")
+        print(f"  • Iteration #{it['iteration_num']}: {it['num_cycles']} cycles | {it['cycle_length']} days | Skip: {it['skip_session']} | Close App: {it.get('close_app', False)} | Dates: {it['raw_dates']}")
 
-    # 2. Clear old data from HTML report as requested ("remove the dat in html and photo")
-    if not args.keep_history:
-        print("\n[Report Cleanup] Clearing old test run data from HTML report...")
+    # 2. Preserve existing history ledger (Do not delete data in HTML page - add down)
+    if args.clear_history:
+        print("\n[Report Cleanup] Clearing old test run data from HTML report as requested...")
         clear_history(backup=True)
-
-    # 3. Connect to Appium driver
-    driver = create_appium_driver()
+    else:
+        print("\n[Report Ledger] Preserving all existing test runs in HTML report (New runs will append below).")
 
     success_count = 0
     failure_count = 0
+    driver = None
+
+    def get_or_recreate_driver(drv):
+        if drv is not None:
+            try:
+                drv.current_activity
+                return drv
+            except Exception:
+                try:
+                    drv.quit()
+                except Exception:
+                    pass
+        print("\n[Appium] Connecting clean driver session...", flush=True)
+        return create_appium_driver()
 
     try:
         # 4. Run loop across all target iterations
         for it in target_iterations:
+            driver = get_or_recreate_driver(driver)
             success = run_single_iteration(driver, it)
             if success:
                 success_count += 1
             else:
                 failure_count += 1
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+                driver = None
 
             time.sleep(3)
 
     finally:
-        try:
-            driver.quit()
-        except Exception:
-            pass
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
 
     print("\n" + "#" * 80)
     print("  EXCEL TEST SUITE EXECUTION SUMMARY")
