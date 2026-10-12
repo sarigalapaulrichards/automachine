@@ -32,6 +32,7 @@ scratch/
 
 # Test run reports and history backups
 *.html
+!1.09_M/**
 test_history*.json
 
 # Backups and temp files
