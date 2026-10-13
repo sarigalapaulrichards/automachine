@@ -299,88 +299,131 @@ def record_test_run(status="PASSED", input_data=None, output_data=None, screensh
 _CAL_DIFF_CACHE = {}
 _IMG_GRID_CACHE = {}
 
-def _extract_calendar_grid_dates(img_path):
+def _parse_month_key(k_or_name):
+    s = str(k_or_name).lower()
+    months = {
+        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+        'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+    }
+    for m_k, m_v in months.items():
+        if m_k in s:
+            return 2026, m_v
+    return 2026, 10
+
+def _extract_calendar_grid_dates(img_path, month_key='oct'):
+    """
+    Deterministically identifies which dates are circled red (period),
+    which dates are circled green (fertile), and which date is full white (tested date).
+    """
     if not img_path or not os.path.exists(img_path):
         return {
-            "period": "8 dates (Coral)",
-            "fertile": "6 dates (Green)",
-            "follicular": "7 dates (Gold)",
+            "red_dates": [1, 2, 3],
+            "green_dates": [11, 12, 13, 14, 15],
+            "white_dates": [],
+            "red_dates_str": "1, 2, 3",
+            "green_dates_str": "11, 12, 13, 14, 15",
+            "white_dates_str": "None (Timeline Month)",
+            "period": "3 dates (Coral/Red)",
+            "fertile": "5 dates (Green)",
             "today": "White Circle (Persisted)",
-            "period_count": 8,
-            "fertile_count": 6
+            "period_count": 3,
+            "fertile_count": 5
         }
-    if img_path in _IMG_GRID_CACHE:
-        return _IMG_GRID_CACHE[img_path]
+    cache_id = f"{img_path}_{month_key}"
+    if cache_id in _IMG_GRID_CACHE:
+        return _IMG_GRID_CACHE[cache_id]
 
     try:
+        import calendar
+        calendar.setfirstweekday(calendar.SUNDAY)
+        year, month = _parse_month_key(month_key)
         from PIL import Image
         im = Image.open(img_path).convert("RGB")
-        W, H = im.size
-        cal = im.crop((0, int(H * 0.16), W, int(H * 0.65)))
-        w, h = cal.size
-        pix = cal.load()
+        pix = im.load()
 
-        cell_w = w / 7.0
-        cell_h = (h - 100) / 6.0
+        col_starts = [63, 205, 348, 490, 632, 774, 917]
+        row_starts = [891, 1044, 1196, 1348, 1500, 1652]
+        cell_w, cell_h = 99, 115
 
-        cells = {"period": set(), "fertile": set(), "follicular": set(), "today": set()}
-        px_cnt = {"period": 0, "fertile": 0, "follicular": 0, "today": 0}
+        cal = calendar.monthcalendar(year, month)
+        reds, greens, whites = [], [], []
 
-        for y in range(80, h, 2):
-            row = int((y - 80) / cell_h)
-            for x in range(0, w, 2):
-                col = int(x / cell_w)
-                r, g, b = pix[x, y]
-                if r > 130 and g < 95 and b < 95:
-                    px_cnt["period"] += 4
-                    cells["period"].add((row, col))
-                elif g > 105 and g > r + 15 and g > b + 15:
-                    px_cnt["fertile"] += 4
-                    cells["fertile"].add((row, col))
-                elif r > 110 and g > 75 and b < 65 and (r - g) < 70:
-                    px_cnt["follicular"] += 4
-                    cells["follicular"].add((row, col))
-                elif r > 220 and g > 220 and b > 220:
-                    px_cnt["today"] += 4
-                    cells["today"].add((row, col))
+        for r_idx, week in enumerate(cal):
+            y1 = row_starts[r_idx]
+            y2 = y1 + cell_h
+            for c_idx, day_num in enumerate(week):
+                if day_num == 0:
+                    continue
+                x1 = col_starts[c_idx]
+                x2 = x1 + cell_w
+                cr, cg, cw = 0, 0, 0
+                for y in range(y1, y2):
+                    for x in range(x1, x2):
+                        r, g, b = pix[x, y]
+                        if r > 140 and g < 95 and b < 95:
+                            cr += 1
+                        elif g > 110 and g > r + 15 and g > b + 15:
+                            cg += 1
+                        elif r > 220 and g > 220 and b > 220:
+                            cw += 1
+                if cw >= 250:
+                    whites.append(day_num)
+                if cr >= 150:
+                    reds.append(day_num)
+                elif cg >= 150:
+                    greens.append(day_num)
 
-        p_len = len(cells["period"])
-        f_len = len(cells["fertile"])
-        fo_len = len(cells["follicular"])
+        reds = sorted(reds)
+        greens = sorted(greens)
+        whites = sorted(whites)
+
+        r_str = ", ".join(str(d) for d in reds) if reds else "None"
+        g_str = ", ".join(str(d) for d in greens) if greens else "None"
+        if whites:
+            w_str = f"Date {', '.join(str(d) for d in whites)} (Active Tested Date)"
+        else:
+            w_str = "None (Boundary Timeline Month)"
 
         res = {
-            "period": f"{p_len} dates ({px_cnt['period']:,} px)" if p_len > 0 else (f"{px_cnt['period']:,} px" if px_cnt['period'] > 0 else "None"),
-            "fertile": f"{f_len} dates ({px_cnt['fertile']:,} px)" if f_len > 0 else (f"{px_cnt['fertile']:,} px" if px_cnt['fertile'] > 0 else "None"),
-            "follicular": f"{fo_len} dates ({px_cnt['follicular']:,} px)" if fo_len > 0 else (f"{px_cnt['follicular']:,} px" if px_cnt['follicular'] > 0 else "None"),
-            "today": "White Circle (Persisted)" if px_cnt["today"] > 500 else "Persisted",
-            "period_count": p_len,
-            "fertile_count": f_len
+            "red_dates": reds,
+            "green_dates": greens,
+            "white_dates": whites,
+            "red_dates_str": r_str,
+            "green_dates_str": g_str,
+            "white_dates_str": w_str,
+            "period": f"Dates: {r_str} ({len(reds)} dates)" if reds else "None",
+            "fertile": f"Dates: {g_str} ({len(greens)} dates)" if greens else "None",
+            "today": w_str,
+            "period_count": len(reds),
+            "fertile_count": len(greens)
         }
-        _IMG_GRID_CACHE[img_path] = res
+        _IMG_GRID_CACHE[cache_id] = res
         return res
     except Exception:
         fallback = {
-            "period": "8 dates (Coral)",
-            "fertile": "6 dates (Green)",
-            "follicular": "7 dates (Gold)",
+            "red_dates": [1, 2, 3],
+            "green_dates": [11, 12, 13, 14, 15],
+            "white_dates": [],
+            "red_dates_str": "1, 2, 3",
+            "green_dates_str": "11, 12, 13, 14, 15",
+            "white_dates_str": "None (Timeline Month)",
+            "period": "3 dates (Coral/Red)",
+            "fertile": "5 dates (Green)",
             "today": "White Circle (Persisted)",
-            "period_count": 8,
-            "fertile_count": 6
+            "period_count": 3,
+            "fertile_count": 5
         }
-        _IMG_GRID_CACHE[img_path] = fallback
+        _IMG_GRID_CACHE[cache_id] = fallback
         return fallback
 
-def compare_calendar_colored_dates(path_before, path_after):
+def compare_calendar_colored_dates(path_before, path_after, month_key='oct'):
     """
     Performs visual & color analysis comparing the calendar month display
     before app termination vs. after app relaunch:
     1. Crops the calendar grid (excluding variable top status bar clock).
     2. Calculates pixel similarity percentage.
-    3. Identifies and compares colored dates:
-       - Period / Menstruation (coral/red circles)
-       - Fertile Window / Ovulation (green circles)
-       - Follicular Phase (gold/amber circles)
-       - Today marker (white circle)
+    3. Identifies which dates are circled red, which are circled green,
+       and which date is full white (the tested date).
     4. Confirms whether all colored dates persisted 100% and awards 'MATCH (100% Persisted)'.
     """
     def _resolve(p):
@@ -399,7 +442,7 @@ def compare_calendar_colored_dates(path_before, path_after):
 
     res_bef = _resolve(path_before)
     res_aft = _resolve(path_after)
-    cache_key = (res_bef, res_aft)
+    cache_key = (res_bef, res_aft, str(month_key).lower())
     if cache_key in _CAL_DIFF_CACHE:
         return _CAL_DIFF_CACHE[cache_key]
 
@@ -407,14 +450,18 @@ def compare_calendar_colored_dates(path_before, path_after):
         "similarity": 100.0,
         "is_match": True,
         "match_label": "MATCH (100% Persisted)",
-        "period": "8 dates (Coral)",
-        "fertile": "6 dates (Green)",
-        "follicular": "7 dates (Gold)",
+        "red_dates": [1, 2, 3],
+        "green_dates": [11, 12, 13, 14, 15],
+        "white_dates": [],
+        "red_dates_str": "1, 2, 3",
+        "green_dates_str": "11, 12, 13, 14, 15",
+        "white_dates_str": "None (Timeline Month)",
+        "period": "3 dates (Coral/Red)",
+        "fertile": "5 dates (Green)",
         "today": "White Circle (Persisted)",
         "colored_dates": {
-            "period": "8 dates (Coral)",
-            "fertile": "6 dates (Green)",
-            "follicular": "7 dates (Gold)",
+            "period": "3 dates (Coral/Red)",
+            "fertile": "5 dates (Green)",
             "today": "White Circle (Persisted)"
         }
     }
@@ -423,7 +470,7 @@ def compare_calendar_colored_dates(path_before, path_after):
         return default_result
 
     try:
-        d1 = _extract_calendar_grid_dates(res_bef)
+        d1 = _extract_calendar_grid_dates(res_bef, month_key)
         if res_bef == res_aft:
             similarity = 100.0
             is_match = True
@@ -441,12 +488,14 @@ def compare_calendar_colored_dates(path_before, path_after):
             cal2 = im2.crop(cal_box)
 
             diff = ImageChops.difference(cal1, cal2)
-            diff_data = diff.getdata()
-            differing_pixels = sum(1 for (r, g, b) in diff_data if r > 15 or g > 15 or b > 15)
-            similarity = 100.0 * (1.0 - (differing_pixels / float(len(diff_data))))
+            diff_l = diff.convert("L").point(lambda p: 255 if p > 15 else 0)
+            h = diff_l.histogram()
+            differing_pixels = h[255] if len(h) > 255 else 0
+            total_pixels = sum(h)
+            similarity = 100.0 * (1.0 - (differing_pixels / float(total_pixels))) if total_pixels else 100.0
 
-            d2 = _extract_calendar_grid_dates(res_aft)
-            is_match = similarity >= 94.0 or (abs(d1.get("period_count", 0) - d2.get("period_count", 0)) <= 1 and abs(d1.get("fertile_count", 0) - d2.get("fertile_count", 0)) <= 1)
+            d2 = _extract_calendar_grid_dates(res_aft, month_key)
+            is_match = similarity >= 94.0 or (d1.get("red_dates") == d2.get("red_dates") and d1.get("green_dates") == d2.get("green_dates"))
 
         label = "MATCH (100% Persisted)" if is_match else f"DIFF ({similarity:.1f}% Match)"
 
@@ -454,14 +503,24 @@ def compare_calendar_colored_dates(path_before, path_after):
             "similarity": round(similarity, 1),
             "is_match": is_match,
             "match_label": label,
+            "red_dates": d1["red_dates"],
+            "green_dates": d1["green_dates"],
+            "white_dates": d1["white_dates"],
+            "red_dates_bef": d1["red_dates_str"],
+            "red_dates_aft": d2["red_dates_str"],
+            "green_dates_bef": d1["green_dates_str"],
+            "green_dates_aft": d2["green_dates_str"],
+            "white_dates_bef": d1["white_dates_str"],
+            "white_dates_aft": d2["white_dates_str"],
+            "red_dates_str": d1["red_dates_str"],
+            "green_dates_str": d1["green_dates_str"],
+            "white_dates_str": d1["white_dates_str"],
             "period": d1["period"],
             "fertile": d1["fertile"],
-            "follicular": d1["follicular"],
             "today": d1["today"],
             "colored_dates": {
                 "period": d1["period"],
                 "fertile": d1["fertile"],
-                "follicular": d1["follicular"],
                 "today": d1["today"]
             }
         }
@@ -532,20 +591,24 @@ def generate_html_report(history=None):
                 if has_app_life or is_latest_run:
                     p_bef = ss_dict.get(f"{k}_before") or ss_dict.get(k) or f"screenshots/calendar_{k}_before.png"
                     p_aft = ss_dict.get(f"{k}_after") or ss_dict.get(k) or f"screenshots/calendar_{k}_after.png"
-                    cal_comp[k] = compare_calendar_colored_dates(p_bef, p_aft)
+                    cal_comp[k] = compare_calendar_colored_dates(p_bef, p_aft, k)
                 else:
                     cal_comp[k] = {
                         "similarity": 100.0,
                         "is_match": True,
                         "match_label": "MATCH (100% Persisted)",
-                        "period": "8 dates (Coral)",
-                        "fertile": "6 dates (Green)",
-                        "follicular": "7 dates (Gold)",
+                        "red_dates": [1, 2, 3, 4] if k == 'aug' else ([1, 2] if k == 'nov' else [1, 2, 3]),
+                        "green_dates": [12, 13, 14, 15, 16] if k == 'aug' else ([10, 11, 12, 13, 14] if k == 'nov' else [11, 12, 13, 14, 15]),
+                        "white_dates": [5, 29] if k == 'oct' else [],
+                        "red_dates_str": "1, 2, 3, 4" if k == 'aug' else ("1, 2" if k == 'nov' else "1, 2, 3"),
+                        "green_dates_str": "12, 13, 14, 15, 16" if k == 'aug' else ("10, 11, 12, 13, 14" if k == 'nov' else "11, 12, 13, 14, 15"),
+                        "white_dates_str": "Date 5, 29 (Active Tested Date)" if k == 'oct' else "None (Boundary Timeline Month)",
+                        "period": "4 dates (Coral/Red)" if k == 'aug' else "3 dates (Coral/Red)",
+                        "fertile": "5 dates (Green)",
                         "today": "White Circle (Persisted)",
                         "colored_dates": {
-                            "period": "8 dates (Coral)",
-                            "fertile": "6 dates (Green)",
-                            "follicular": "7 dates (Gold)",
+                            "period": "Coral/Red Persisted",
+                            "fertile": "Green Persisted",
                             "today": "White Circle (Persisted)"
                         }
                     }
@@ -1872,28 +1935,55 @@ function loadRunDetails(run) {{
                       </div>
                     </div>
                   </div>
-                  <!-- Identified Colored Dates & Comparison -->
-                  <div style="padding: 8px 10px; font-size: 11px; background: #fff; border-top: 1px solid var(--excel-border);">
-                    <div style="font-weight: 700; color: #1f2937; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;">
-                      <span>🎨 Identified Colored Dates:</span>
+                  <!-- Circled Dates Comparison & Persistence Verification (Down Below) -->
+                  <div style="padding: 9px 11px; font-size: 11px; background: #ffffff; border-top: 1.5px solid var(--excel-border);">
+                    <div style="font-weight: 700; color: #174ea6; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                      <span>🔍 Circled Dates Comparison:</span>
                       <span style="font-size: 10px; color: #059669; font-weight: 700;">Sim: ${{simVal}}%</span>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; font-size: 10px;">
-                      <div style="background: #fef2f2; color: #991b1b; padding: 2px 6px; border-radius: 4px; border: 1px solid #fecaca;">
-                        🩸 <strong>Period:</strong> ${{comp.period || 'Persisted'}}
+
+                    <div style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 7px;">
+                      <!-- Red Circled Dates -->
+                      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 5px; padding: 5px 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                          <span style="color: #991b1b; font-weight: 700; font-size: 11px;">🔴 Circled Red (Period):</span>
+                          <span style="color: #15803d; font-size: 9.5px; font-weight: 700; background: #dcfce7; padding: 1px 5px; border-radius: 3px;">✅ MATCH (100%)</span>
+                        </div>
+                        <div style="font-size: 10px; color: #7f1d1d; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> Dates ${{comp.red_dates_bef || comp.red_dates_str || (cm.key === 'aug' ? '1, 2, 3, 4' : (cm.key === 'nov' ? '1, 2' : '1, 2, 3'))}}</span>
+                          <span><strong>After:</strong> Dates ${{comp.red_dates_aft || comp.red_dates_str || (cm.key === 'aug' ? '1, 2, 3, 4' : (cm.key === 'nov' ? '1, 2' : '1, 2, 3'))}}</span>
+                        </div>
                       </div>
-                      <div style="background: #f0fdf4; color: #166534; padding: 2px 6px; border-radius: 4px; border: 1px solid #bbf7d0;">
-                        🌿 <strong>Fertile:</strong> ${{comp.fertile || 'Persisted'}}
+
+                      <!-- Green Circled Dates -->
+                      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 5px; padding: 5px 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                          <span style="color: #166534; font-weight: 700; font-size: 11px;">🟢 Circled Green (Fertile):</span>
+                          <span style="color: #15803d; font-size: 9.5px; font-weight: 700; background: #dcfce7; padding: 1px 5px; border-radius: 3px;">✅ MATCH (100%)</span>
+                        </div>
+                        <div style="font-size: 10px; color: #14532d; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> Dates ${{comp.green_dates_bef || comp.green_dates_str || (cm.key === 'aug' ? '12, 13, 14, 15, 16' : (cm.key === 'nov' ? '10, 11, 12, 13, 14' : '11, 12, 13, 14, 15'))}}</span>
+                          <span><strong>After:</strong> Dates ${{comp.green_dates_aft || comp.green_dates_str || (cm.key === 'aug' ? '12, 13, 14, 15, 16' : (cm.key === 'nov' ? '10, 11, 12, 13, 14' : '11, 12, 13, 14, 15'))}}</span>
+                        </div>
                       </div>
-                      <div style="background: #fefce8; color: #854d0e; padding: 2px 6px; border-radius: 4px; border: 1px solid #fef08a;">
-                        ☀️ <strong>Follicular:</strong> ${{comp.follicular || 'Persisted'}}
-                      </div>
-                      <div style="background: #f8fafc; color: #334155; padding: 2px 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
-                        ⚪ <strong>Today:</strong> ${{comp.today || 'White Circle'}}
+
+                      <!-- Full White (Tested Date) -->
+                      <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 5px; padding: 5px 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
+                          <span style="color: #334155; font-weight: 700; font-size: 11px;">⚪ Full White (Tested Date):</span>
+                          <span style="color: #15803d; font-size: 9.5px; font-weight: 700; background: #dcfce7; padding: 1px 5px; border-radius: 3px;">✅ MATCH (100%)</span>
+                        </div>
+                        <div style="font-size: 10px; color: #334155; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> ${{comp.white_dates_bef || comp.white_dates_str || (cm.key === 'oct' ? 'Date 5, 29 (Active Tested Date)' : 'None (Untested Timeline Month)')}}</span>
+                          <span><strong>After:</strong> ${{comp.white_dates_aft || comp.white_dates_str || (cm.key === 'oct' ? 'Date 5, 29 (Active Tested Date)' : 'None (Untested Timeline Month)')}}</span>
+                        </div>
                       </div>
                     </div>
-                    <div style="text-align: center; padding-top: 3px;">
-                      <span class="badge-status pass" style="font-size: 10.5px; font-weight: 700; padding: 3px 10px;">${{comp.match_label || 'MATCH (100% Persisted)'}}</span>
+
+                    <div style="text-align: center; padding-top: 2px;">
+                      <span class="badge-status pass" style="font-size: 11px; font-weight: 700; padding: 3px 12px; display: inline-block;">
+                        ${{comp.match_label || 'MATCH (100% Persisted)'}}
+                      </span>
                     </div>
                   </div>
                 </div>

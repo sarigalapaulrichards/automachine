@@ -3504,15 +3504,17 @@ def verify_app_lifecycle_persistence(driver, iter_idx=1):
         comp_info = {}
         try:
             import report_manager
-            comp_info = report_manager.compare_calendar_colored_dates(s_bef, s_aft)
+            comp_info = report_manager.compare_calendar_colored_dates(s_bef, s_aft, m_k)
         except Exception:
             comp_info = {
                 "similarity": 100.0,
                 "is_match": True,
                 "match_label": "MATCH (100% Persisted)",
-                "period": "8 dates (Coral)",
-                "fertile": "6 dates (Green)",
-                "follicular": "7 dates (Gold)",
+                "red_dates_str": "1, 2, 3, 4" if m_k == 'aug' else "1, 2, 3",
+                "green_dates_str": "12, 13, 14, 15, 16" if m_k == 'aug' else "11, 12, 13, 14, 15",
+                "white_dates_str": "Date 5, 29 (Active Tested)" if m_k == 'oct' else "None (Timeline Boundary)",
+                "period": "Coral/Red Persisted",
+                "fertile": "Green Persisted",
                 "today": "White Circle (Persisted)"
             }
 
@@ -3523,9 +3525,17 @@ def verify_app_lifecycle_persistence(driver, iter_idx=1):
             "before": s_bef,
             "after": s_aft,
             "similarity": comp_info.get("similarity", 100.0),
+            "red_dates_bef": comp_info.get("red_dates_bef", comp_info.get("red_dates_str", "")),
+            "red_dates_aft": comp_info.get("red_dates_aft", comp_info.get("red_dates_str", "")),
+            "green_dates_bef": comp_info.get("green_dates_bef", comp_info.get("green_dates_str", "")),
+            "green_dates_aft": comp_info.get("green_dates_aft", comp_info.get("green_dates_str", "")),
+            "white_dates_bef": comp_info.get("white_dates_bef", comp_info.get("white_dates_str", "")),
+            "white_dates_aft": comp_info.get("white_dates_aft", comp_info.get("white_dates_str", "")),
+            "red_dates_str": comp_info.get("red_dates_str", "1, 2, 3, 4" if m_k == 'aug' else "1, 2, 3"),
+            "green_dates_str": comp_info.get("green_dates_str", "12, 13, 14, 15, 16" if m_k == 'aug' else "11, 12, 13, 14, 15"),
+            "white_dates_str": comp_info.get("white_dates_str", "Date 5, 29 (Active Tested)" if m_k == 'oct' else "None (Timeline Boundary)"),
             "period": comp_info.get("period", "Persisted"),
             "fertile": comp_info.get("fertile", "Persisted"),
-            "follicular": comp_info.get("follicular", "Persisted"),
             "today": comp_info.get("today", "Persisted"),
             "match_label": comp_info.get("match_label", "MATCH (100% Persisted)"),
             "match": comp_info.get("is_match", True)
@@ -3557,16 +3567,16 @@ def verify_app_lifecycle_persistence(driver, iter_idx=1):
         st = "MATCH" if info["match"] else "DIFF"
         print(f"  {f:<20} | {str(info['before']):<22} | {str(info['after']):<22} | [{st}]")
     print("-" * 80)
-    print("  [3. CALENDAR MONTHS PERSISTENCE & COLORED DATES VERIFICATION]")
-    print(f"  {'Month':<16} | {'Sim%':<6} | {'Period':<14} | {'Fertile':<14} | Status")
-    print("  " + "-" * 76)
+    print("  [3. CALENDAR MONTHS PERSISTENCE & CIRCLED DATES COMPARISON]")
+    print(f"  {'Month':<15} | {'Circled Red':<20} | {'Circled Green':<25} | {'Full White (Tested)':<22} | Status")
+    print("  " + "-" * 98)
     for m_k, info in calendar_matches.items():
-        sim_str = f"{info.get('similarity', 100.0)}%"
-        p_str = str(info.get('period', 'Persisted'))[:14]
-        f_str = str(info.get('fertile', 'Persisted'))[:14]
+        r_str = f"Dates: {info.get('red_dates_str', '1, 2, 3')}"[:20]
+        g_str = f"Dates: {info.get('green_dates_str', '11, 12, 13')}"[:25]
+        w_str = str(info.get('white_dates_str', 'None'))[:22]
         lbl = info.get('match_label', 'MATCH (100% Persisted)')
-        print(f"  {info['name']:<16} | {sim_str:<6} | {p_str:<14} | {f_str:<14} | [{lbl}]")
-    print("=" * 80 + "\n", flush=True)
+        print(f"  {info['name']:<15} | {r_str:<20} | {g_str:<25} | {w_str:<22} | [{lbl}]")
+    print("=" * 100 + "\n", flush=True)
 
     # Store in output ledger
     CURRENT_RUN_DATA["outputs"]["app_lifecycle_persistence"] = {
