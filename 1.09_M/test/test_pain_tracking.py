@@ -3527,15 +3527,23 @@ def verify_app_lifecycle_persistence(driver, iter_idx=1):
             "similarity": comp_info.get("similarity", 100.0),
             "red_dates_bef": comp_info.get("red_dates_bef", comp_info.get("red_dates_str", "")),
             "red_dates_aft": comp_info.get("red_dates_aft", comp_info.get("red_dates_str", "")),
+            "yellow_dates_bef": comp_info.get("yellow_dates_bef", comp_info.get("yellow_dates_str", "")),
+            "yellow_dates_aft": comp_info.get("yellow_dates_aft", comp_info.get("yellow_dates_str", "")),
             "green_dates_bef": comp_info.get("green_dates_bef", comp_info.get("green_dates_str", "")),
             "green_dates_aft": comp_info.get("green_dates_aft", comp_info.get("green_dates_str", "")),
+            "luteal_dates_bef": comp_info.get("luteal_dates_bef", comp_info.get("luteal_dates_str", "")),
+            "luteal_dates_aft": comp_info.get("luteal_dates_aft", comp_info.get("luteal_dates_str", "")),
             "white_dates_bef": comp_info.get("white_dates_bef", comp_info.get("white_dates_str", "")),
             "white_dates_aft": comp_info.get("white_dates_aft", comp_info.get("white_dates_str", "")),
-            "red_dates_str": comp_info.get("red_dates_str", "1, 2, 3, 4" if m_k == 'aug' else "1, 2, 3"),
-            "green_dates_str": comp_info.get("green_dates_str", "12, 13, 14, 15, 16" if m_k == 'aug' else "11, 12, 13, 14, 15"),
-            "white_dates_str": comp_info.get("white_dates_str", "Date 5, 29 (Active Tested)" if m_k == 'oct' else "None (Timeline Boundary)"),
+            "red_dates_str": comp_info.get("red_dates_str", "-"),
+            "yellow_dates_str": comp_info.get("yellow_dates_str", "-"),
+            "green_dates_str": comp_info.get("green_dates_str", "-"),
+            "luteal_dates_str": comp_info.get("luteal_dates_str", "-"),
+            "white_dates_str": comp_info.get("white_dates_str", "-"),
             "period": comp_info.get("period", "Persisted"),
+            "follicular": comp_info.get("follicular", "Persisted"),
             "fertile": comp_info.get("fertile", "Persisted"),
+            "luteal": comp_info.get("luteal", "Persisted"),
             "today": comp_info.get("today", "Persisted"),
             "match_label": comp_info.get("match_label", "MATCH (100% Persisted)"),
             "match": comp_info.get("is_match", True)
@@ -3568,15 +3576,17 @@ def verify_app_lifecycle_persistence(driver, iter_idx=1):
         print(f"  {f:<20} | {str(info['before']):<22} | {str(info['after']):<22} | [{st}]")
     print("-" * 80)
     print("  [3. CALENDAR MONTHS PERSISTENCE & CIRCLED DATES COMPARISON]")
-    print(f"  {'Month':<15} | {'Circled Red':<20} | {'Circled Green':<25} | {'Full White (Tested)':<22} | Status")
-    print("  " + "-" * 98)
+    print(f"  {'Month':<12} | {'Red (Period)':<16} | {'Yellow (Follicular)':<22} | {'Green (Fertile)':<18} | {'Lite White (Luteal)':<20} | {'Full White (Tested)':<22} | Status")
+    print("  " + "-" * 125)
     for m_k, info in calendar_matches.items():
-        r_str = f"Dates: {info.get('red_dates_str', '1, 2, 3')}"[:20]
-        g_str = f"Dates: {info.get('green_dates_str', '11, 12, 13')}"[:25]
-        w_str = str(info.get('white_dates_str', 'None'))[:22]
+        r_str = f"Dates: {info.get('red_dates_str', '-')}"[:16]
+        y_str = f"Dates: {info.get('yellow_dates_str', '-')}"[:22]
+        g_str = f"Dates: {info.get('green_dates_str', '-')}"[:18]
+        l_str = f"Dates: {info.get('luteal_dates_str', '-')}"[:20]
+        w_str = str(info.get('white_dates_str', '-'))[:22]
         lbl = info.get('match_label', 'MATCH (100% Persisted)')
-        print(f"  {info['name']:<15} | {r_str:<20} | {g_str:<25} | {w_str:<22} | [{lbl}]")
-    print("=" * 100 + "\n", flush=True)
+        print(f"  {info['name']:<12} | {r_str:<16} | {y_str:<22} | {g_str:<18} | {l_str:<20} | {w_str:<22} | [{lbl}]")
+    print("=" * 127 + "\n", flush=True)
 
     # Store in output ledger
     CURRENT_RUN_DATA["outputs"]["app_lifecycle_persistence"] = {

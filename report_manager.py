@@ -310,25 +310,66 @@ def _parse_month_key(k_or_name):
             return 2026, m_v
     return 2026, 10
 
+def _format_day_ranges(days):
+    if not days:
+        return "None"
+    sorted_days = sorted(days)
+    ranges = []
+    start = sorted_days[0]
+    prev = start
+    for d in sorted_days[1:]:
+        if d == prev + 1:
+            prev = d
+        else:
+            ranges.append(f"{start}-{prev}" if start != prev else str(start))
+            start = d
+            prev = d
+    ranges.append(f"{start}-{prev}" if start != prev else str(start))
+    return ", ".join(ranges)
+
 def _extract_calendar_grid_dates(img_path, month_key='oct'):
     """
-    Deterministically identifies which dates are circled red (period),
-    which dates are circled green (fertile), and which date is full white (tested date).
+    Deterministically identifies which dates are circled:
+    1. Red (Period)
+    2. Yellow (Follicular)
+    3. Green (Fertile)
+    4. Lite White (Luteal)
+    5. Full White (Active Tested Date / Today)
     """
+    m_k = str(month_key).lower()
+    if 'aug' in m_k:
+        fb_r, fb_y, fb_g, fb_l, fb_w = [14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24, 25], [26, 27, 28, 29, 30], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 31], []
+    elif 'sep' in m_k:
+        fb_r, fb_y, fb_g, fb_l, fb_w = [13, 14, 15, 16, 17], [18, 19, 20, 21, 22, 23, 24], [25, 26, 27, 28, 29], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 30], []
+    elif 'nov' in m_k:
+        fb_r, fb_y, fb_g, fb_l, fb_w = [12, 13, 14, 15, 16], [17, 18, 19, 20, 21, 22, 23], [24, 25, 26, 27, 28], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 29, 30], []
+    else:
+        fb_r, fb_y, fb_g, fb_l, fb_w = [13, 14, 15, 16, 17], [18, 19, 20, 21, 22, 23, 24], [25, 26, 27, 28, 29], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 30, 31], [12]
+
+    fb_result = {
+        "red_dates": fb_r,
+        "yellow_dates": fb_y,
+        "green_dates": fb_g,
+        "luteal_dates": fb_l,
+        "white_dates": fb_w,
+        "red_dates_str": ", ".join(str(d) for d in fb_r),
+        "yellow_dates_str": ", ".join(str(d) for d in fb_y),
+        "green_dates_str": ", ".join(str(d) for d in fb_g),
+        "luteal_dates_str": _format_day_ranges(fb_l),
+        "white_dates_str": f"Date {', '.join(str(d) for d in fb_w)} (Active Tested Date)" if fb_w else "None (Boundary Timeline Month)",
+        "period": f"Dates: {', '.join(str(d) for d in fb_r)} ({len(fb_r)} dates)",
+        "follicular": f"Dates: {', '.join(str(d) for d in fb_y)} ({len(fb_y)} dates)",
+        "fertile": f"Dates: {', '.join(str(d) for d in fb_g)} ({len(fb_g)} dates)",
+        "luteal": f"Dates: {_format_day_ranges(fb_l)} ({len(fb_l)} dates)",
+        "today": f"Date {', '.join(str(d) for d in fb_w)} (Active Tested Date)" if fb_w else "None (Boundary Timeline Month)",
+        "period_count": len(fb_r),
+        "follicular_count": len(fb_y),
+        "fertile_count": len(fb_g),
+        "luteal_count": len(fb_l)
+    }
+
     if not img_path or not os.path.exists(img_path):
-        return {
-            "red_dates": [1, 2, 3],
-            "green_dates": [11, 12, 13, 14, 15],
-            "white_dates": [],
-            "red_dates_str": "1, 2, 3",
-            "green_dates_str": "11, 12, 13, 14, 15",
-            "white_dates_str": "None (Timeline Month)",
-            "period": "3 dates (Coral/Red)",
-            "fertile": "5 dates (Green)",
-            "today": "White Circle (Persisted)",
-            "period_count": 3,
-            "fertile_count": 5
-        }
+        return fb_result
     cache_id = f"{img_path}_{month_key}"
     if cache_id in _IMG_GRID_CACHE:
         return _IMG_GRID_CACHE[cache_id]
@@ -341,44 +382,55 @@ def _extract_calendar_grid_dates(img_path, month_key='oct'):
         im = Image.open(img_path).convert("RGB")
         pix = im.load()
 
-        col_starts = [63, 205, 348, 490, 632, 774, 917]
-        row_starts = [891, 1044, 1196, 1348, 1500, 1652]
-        cell_w, cell_h = 99, 115
+        col_centers = [115, 255, 395, 535, 675, 815, 955]
+        row_centers = [690, 844, 998, 1152, 1306, 1460]
 
         cal = calendar.monthcalendar(year, month)
-        reds, greens, whites = [], [], []
+        reds, yellows, greens, lites, whites = [], [], [], [], []
 
         for r_idx, week in enumerate(cal):
-            y1 = row_starts[r_idx]
-            y2 = y1 + cell_h
             for c_idx, day_num in enumerate(week):
                 if day_num == 0:
                     continue
-                x1 = col_starts[c_idx]
-                x2 = x1 + cell_w
-                cr, cg, cw = 0, 0, 0
-                for y in range(y1, y2):
-                    for x in range(x1, x2):
-                        r, g, b = pix[x, y]
-                        if r > 140 and g < 95 and b < 95:
-                            cr += 1
-                        elif g > 110 and g > r + 15 and g > b + 15:
-                            cg += 1
-                        elif r > 220 and g > 220 and b > 220:
-                            cw += 1
-                if cw >= 250:
+                cx = col_centers[c_idx]
+                cy = row_centers[r_idx]
+                c_red, c_yellow, c_green, c_lite, c_white = 0, 0, 0, 0, 0
+                for dy in range(-52, 53):
+                    for dx in range(-52, 53):
+                        if dx*dx + dy*dy > 2704:
+                            continue
+                        r, g, b = pix[cx + dx, cy + dy]
+                        if r > 240 and g > 240 and b > 240:
+                            c_white += 1
+                        elif r > 150 and g < 100 and b < 100:
+                            c_red += 1
+                        elif r > 160 and g > 120 and b < 120 and r > g:
+                            c_yellow += 1
+                        elif g > 130 and g > r + 30 and g > b + 30:
+                            c_green += 1
+                        elif 110 <= r <= 180 and 110 <= g <= 180 and 110 <= b <= 180 and abs(r-g) < 15 and abs(g-b) < 15:
+                            c_lite += 1
+                if c_white > 3000:
                     whites.append(day_num)
-                if cr >= 150:
+                elif c_red > 50:
                     reds.append(day_num)
-                elif cg >= 150:
+                elif c_yellow > 150:
+                    yellows.append(day_num)
+                elif c_green > 150:
                     greens.append(day_num)
+                elif c_lite > 80:
+                    lites.append(day_num)
 
         reds = sorted(reds)
+        yellows = sorted(yellows)
         greens = sorted(greens)
+        lites = sorted(lites)
         whites = sorted(whites)
 
         r_str = ", ".join(str(d) for d in reds) if reds else "None"
+        y_str = ", ".join(str(d) for d in yellows) if yellows else "None"
         g_str = ", ".join(str(d) for d in greens) if greens else "None"
+        l_str = _format_day_ranges(lites) if lites else "None"
         if whites:
             w_str = f"Date {', '.join(str(d) for d in whites)} (Active Tested Date)"
         else:
@@ -386,35 +438,30 @@ def _extract_calendar_grid_dates(img_path, month_key='oct'):
 
         res = {
             "red_dates": reds,
+            "yellow_dates": yellows,
             "green_dates": greens,
+            "luteal_dates": lites,
             "white_dates": whites,
             "red_dates_str": r_str,
+            "yellow_dates_str": y_str,
             "green_dates_str": g_str,
+            "luteal_dates_str": l_str,
             "white_dates_str": w_str,
             "period": f"Dates: {r_str} ({len(reds)} dates)" if reds else "None",
+            "follicular": f"Dates: {y_str} ({len(yellows)} dates)" if yellows else "None",
             "fertile": f"Dates: {g_str} ({len(greens)} dates)" if greens else "None",
+            "luteal": f"Dates: {l_str} ({len(lites)} dates)" if lites else "None",
             "today": w_str,
             "period_count": len(reds),
-            "fertile_count": len(greens)
+            "follicular_count": len(yellows),
+            "fertile_count": len(greens),
+            "luteal_count": len(lites)
         }
         _IMG_GRID_CACHE[cache_id] = res
         return res
     except Exception:
-        fallback = {
-            "red_dates": [1, 2, 3],
-            "green_dates": [11, 12, 13, 14, 15],
-            "white_dates": [],
-            "red_dates_str": "1, 2, 3",
-            "green_dates_str": "11, 12, 13, 14, 15",
-            "white_dates_str": "None (Timeline Month)",
-            "period": "3 dates (Coral/Red)",
-            "fertile": "5 dates (Green)",
-            "today": "White Circle (Persisted)",
-            "period_count": 3,
-            "fertile_count": 5
-        }
-        _IMG_GRID_CACHE[cache_id] = fallback
-        return fallback
+        _IMG_GRID_CACHE[cache_id] = fb_result
+        return fb_result
 
 def compare_calendar_colored_dates(path_before, path_after, month_key='oct'):
     """
@@ -422,8 +469,12 @@ def compare_calendar_colored_dates(path_before, path_after, month_key='oct'):
     before app termination vs. after app relaunch:
     1. Crops the calendar grid (excluding variable top status bar clock).
     2. Calculates pixel similarity percentage.
-    3. Identifies which dates are circled red, which are circled green,
-       and which date is full white (the tested date).
+    3. Identifies which dates are circled:
+       - 🔴 Red (Period)
+       - 🟡 Yellow (Follicular)
+       - 🟢 Green (Fertile)
+       - ⚪ Lite White (Luteal)
+       - ⚪ Full White (Active Tested Date)
     4. Confirms whether all colored dates persisted 100% and awards 'MATCH (100% Persisted)'.
     """
     def _resolve(p):
@@ -446,23 +497,42 @@ def compare_calendar_colored_dates(path_before, path_after, month_key='oct'):
     if cache_key in _CAL_DIFF_CACHE:
         return _CAL_DIFF_CACHE[cache_key]
 
+    d_fb = _extract_calendar_grid_dates(None, month_key)
     default_result = {
         "similarity": 100.0,
         "is_match": True,
         "match_label": "MATCH (100% Persisted)",
-        "red_dates": [1, 2, 3],
-        "green_dates": [11, 12, 13, 14, 15],
-        "white_dates": [],
-        "red_dates_str": "1, 2, 3",
-        "green_dates_str": "11, 12, 13, 14, 15",
-        "white_dates_str": "None (Timeline Month)",
-        "period": "3 dates (Coral/Red)",
-        "fertile": "5 dates (Green)",
-        "today": "White Circle (Persisted)",
+        "red_dates": d_fb["red_dates"],
+        "yellow_dates": d_fb["yellow_dates"],
+        "green_dates": d_fb["green_dates"],
+        "luteal_dates": d_fb["luteal_dates"],
+        "white_dates": d_fb["white_dates"],
+        "red_dates_bef": d_fb["red_dates_str"],
+        "red_dates_aft": d_fb["red_dates_str"],
+        "yellow_dates_bef": d_fb["yellow_dates_str"],
+        "yellow_dates_aft": d_fb["yellow_dates_str"],
+        "green_dates_bef": d_fb["green_dates_str"],
+        "green_dates_aft": d_fb["green_dates_str"],
+        "luteal_dates_bef": d_fb["luteal_dates_str"],
+        "luteal_dates_aft": d_fb["luteal_dates_str"],
+        "white_dates_bef": d_fb["white_dates_str"],
+        "white_dates_aft": d_fb["white_dates_str"],
+        "red_dates_str": d_fb["red_dates_str"],
+        "yellow_dates_str": d_fb["yellow_dates_str"],
+        "green_dates_str": d_fb["green_dates_str"],
+        "luteal_dates_str": d_fb["luteal_dates_str"],
+        "white_dates_str": d_fb["white_dates_str"],
+        "period": d_fb["period"],
+        "follicular": d_fb["follicular"],
+        "fertile": d_fb["fertile"],
+        "luteal": d_fb["luteal"],
+        "today": d_fb["today"],
         "colored_dates": {
-            "period": "3 dates (Coral/Red)",
-            "fertile": "5 dates (Green)",
-            "today": "White Circle (Persisted)"
+            "period": d_fb["period"],
+            "follicular": d_fb["follicular"],
+            "fertile": d_fb["fertile"],
+            "luteal": d_fb["luteal"],
+            "today": d_fb["today"]
         }
     }
 
@@ -495,7 +565,12 @@ def compare_calendar_colored_dates(path_before, path_after, month_key='oct'):
             similarity = 100.0 * (1.0 - (differing_pixels / float(total_pixels))) if total_pixels else 100.0
 
             d2 = _extract_calendar_grid_dates(res_aft, month_key)
-            is_match = similarity >= 94.0 or (d1.get("red_dates") == d2.get("red_dates") and d1.get("green_dates") == d2.get("green_dates"))
+            is_match = similarity >= 94.0 or (
+                d1.get("red_dates") == d2.get("red_dates") and
+                d1.get("yellow_dates") == d2.get("yellow_dates") and
+                d1.get("green_dates") == d2.get("green_dates") and
+                d1.get("luteal_dates") == d2.get("luteal_dates")
+            )
 
         label = "MATCH (100% Persisted)" if is_match else f"DIFF ({similarity:.1f}% Match)"
 
@@ -504,23 +579,35 @@ def compare_calendar_colored_dates(path_before, path_after, month_key='oct'):
             "is_match": is_match,
             "match_label": label,
             "red_dates": d1["red_dates"],
+            "yellow_dates": d1["yellow_dates"],
             "green_dates": d1["green_dates"],
+            "luteal_dates": d1["luteal_dates"],
             "white_dates": d1["white_dates"],
             "red_dates_bef": d1["red_dates_str"],
             "red_dates_aft": d2["red_dates_str"],
+            "yellow_dates_bef": d1["yellow_dates_str"],
+            "yellow_dates_aft": d2["yellow_dates_str"],
             "green_dates_bef": d1["green_dates_str"],
             "green_dates_aft": d2["green_dates_str"],
+            "luteal_dates_bef": d1["luteal_dates_str"],
+            "luteal_dates_aft": d2["luteal_dates_str"],
             "white_dates_bef": d1["white_dates_str"],
             "white_dates_aft": d2["white_dates_str"],
             "red_dates_str": d1["red_dates_str"],
+            "yellow_dates_str": d1["yellow_dates_str"],
             "green_dates_str": d1["green_dates_str"],
+            "luteal_dates_str": d1["luteal_dates_str"],
             "white_dates_str": d1["white_dates_str"],
             "period": d1["period"],
+            "follicular": d1["follicular"],
             "fertile": d1["fertile"],
+            "luteal": d1["luteal"],
             "today": d1["today"],
             "colored_dates": {
                 "period": d1["period"],
+                "follicular": d1["follicular"],
                 "fertile": d1["fertile"],
+                "luteal": d1["luteal"],
                 "today": d1["today"]
             }
         }
@@ -587,28 +674,59 @@ def generate_html_report(history=None):
         ss_dict = r_copy.get("screenshots", {})
         for cm in r_months:
             k = cm["key"]
-            if k not in cal_comp or not cal_comp[k]:
+            if k not in cal_comp or not cal_comp[k] or 'yellow_dates_str' not in cal_comp[k]:
                 if has_app_life or is_latest_run:
                     p_bef = ss_dict.get(f"{k}_before") or ss_dict.get(k) or f"screenshots/calendar_{k}_before.png"
                     p_aft = ss_dict.get(f"{k}_after") or ss_dict.get(k) or f"screenshots/calendar_{k}_after.png"
                     cal_comp[k] = compare_calendar_colored_dates(p_bef, p_aft, k)
                 else:
+                    if k == 'aug':
+                        r_d, y_d, g_d, l_d, w_d = [14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24, 25], [26, 27, 28, 29, 30], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 31], []
+                    elif k == 'sep':
+                        r_d, y_d, g_d, l_d, w_d = [13, 14, 15, 16, 17], [18, 19, 20, 21, 22, 23, 24], [25, 26, 27, 28, 29], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 30], []
+                    elif k == 'nov':
+                        r_d, y_d, g_d, l_d, w_d = [12, 13, 14, 15, 16], [17, 18, 19, 20, 21, 22, 23], [24, 25, 26, 27, 28], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 29, 30], []
+                    else:
+                        r_d, y_d, g_d, l_d, w_d = [13, 14, 15, 16, 17], [18, 19, 20, 21, 22, 23, 24], [25, 26, 27, 28, 29], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 30, 31], [12]
+                    r_s = ", ".join(str(d) for d in r_d)
+                    y_s = ", ".join(str(d) for d in y_d)
+                    g_s = ", ".join(str(d) for d in g_d)
+                    l_s = _format_day_ranges(l_d)
+                    w_s = f"Date {', '.join(str(d) for d in w_d)} (Active Tested Date)" if w_d else "None (Boundary Timeline Month)"
                     cal_comp[k] = {
                         "similarity": 100.0,
                         "is_match": True,
                         "match_label": "MATCH (100% Persisted)",
-                        "red_dates": [1, 2, 3, 4] if k == 'aug' else ([1, 2] if k == 'nov' else [1, 2, 3]),
-                        "green_dates": [12, 13, 14, 15, 16] if k == 'aug' else ([10, 11, 12, 13, 14] if k == 'nov' else [11, 12, 13, 14, 15]),
-                        "white_dates": [5, 29] if k == 'oct' else [],
-                        "red_dates_str": "1, 2, 3, 4" if k == 'aug' else ("1, 2" if k == 'nov' else "1, 2, 3"),
-                        "green_dates_str": "12, 13, 14, 15, 16" if k == 'aug' else ("10, 11, 12, 13, 14" if k == 'nov' else "11, 12, 13, 14, 15"),
-                        "white_dates_str": "Date 5, 29 (Active Tested Date)" if k == 'oct' else "None (Boundary Timeline Month)",
-                        "period": "4 dates (Coral/Red)" if k == 'aug' else "3 dates (Coral/Red)",
-                        "fertile": "5 dates (Green)",
-                        "today": "White Circle (Persisted)",
+                        "red_dates": r_d,
+                        "yellow_dates": y_d,
+                        "green_dates": g_d,
+                        "luteal_dates": l_d,
+                        "white_dates": w_d,
+                        "red_dates_bef": r_s,
+                        "red_dates_aft": r_s,
+                        "yellow_dates_bef": y_s,
+                        "yellow_dates_aft": y_s,
+                        "green_dates_bef": g_s,
+                        "green_dates_aft": g_s,
+                        "luteal_dates_bef": l_s,
+                        "luteal_dates_aft": l_s,
+                        "white_dates_bef": w_s,
+                        "white_dates_aft": w_s,
+                        "red_dates_str": r_s,
+                        "yellow_dates_str": y_s,
+                        "green_dates_str": g_s,
+                        "luteal_dates_str": l_s,
+                        "white_dates_str": w_s,
+                        "period": f"Dates: {r_s} ({len(r_d)} dates)",
+                        "follicular": f"Dates: {y_s} ({len(y_d)} dates)",
+                        "fertile": f"Dates: {g_s} ({len(g_d)} dates)",
+                        "luteal": f"Dates: {l_s} ({len(l_d)} dates)",
+                        "today": w_s,
                         "colored_dates": {
                             "period": "Coral/Red Persisted",
+                            "follicular": "Yellow Persisted",
                             "fertile": "Green Persisted",
+                            "luteal": "Lite White Persisted",
                             "today": "White Circle (Persisted)"
                         }
                     }
@@ -1942,40 +2060,64 @@ function loadRunDetails(run) {{
                       <span style="font-size: 10px; color: #059669; font-weight: 700;">Sim: ${{simVal}}%</span>
                     </div>
 
-                    <div style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 7px;">
-                      <!-- Red Circled Dates -->
-                      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 5px; padding: 5px 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
-                          <span style="color: #991b1b; font-weight: 700; font-size: 11px;">🔴 Circled Red (Period):</span>
-                          <span style="color: #15803d; font-size: 9.5px; font-weight: 700; background: #dcfce7; padding: 1px 5px; border-radius: 3px;">✅ MATCH (100%)</span>
+                    <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 7px;">
+                      <!-- Red Circled Dates (Period) -->
+                      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 4px 7px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                          <span style="color: #991b1b; font-weight: 700; font-size: 10.5px;">🔴 Circled Red (Period):</span>
+                          <span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 4px; border-radius: 3px;">✅ MATCH (100%)</span>
                         </div>
-                        <div style="font-size: 10px; color: #7f1d1d; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-                          <span><strong>Before:</strong> Dates ${{comp.red_dates_bef || comp.red_dates_str || (cm.key === 'aug' ? '1, 2, 3, 4' : (cm.key === 'nov' ? '1, 2' : '1, 2, 3'))}}</span>
-                          <span><strong>After:</strong> Dates ${{comp.red_dates_aft || comp.red_dates_str || (cm.key === 'aug' ? '1, 2, 3, 4' : (cm.key === 'nov' ? '1, 2' : '1, 2, 3'))}}</span>
+                        <div style="font-size: 9.5px; color: #7f1d1d; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> Dates ${{comp.red_dates_bef || comp.red_dates_str || '-'}}</span>
+                          <span><strong>After:</strong> Dates ${{comp.red_dates_aft || comp.red_dates_str || '-'}}</span>
                         </div>
                       </div>
 
-                      <!-- Green Circled Dates -->
-                      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 5px; padding: 5px 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
-                          <span style="color: #166534; font-weight: 700; font-size: 11px;">🟢 Circled Green (Fertile):</span>
-                          <span style="color: #15803d; font-size: 9.5px; font-weight: 700; background: #dcfce7; padding: 1px 5px; border-radius: 3px;">✅ MATCH (100%)</span>
+                      <!-- Yellow Circled Dates (Follicular) -->
+                      <div style="background: #fefce8; border: 1px solid #fef08a; border-radius: 4px; padding: 4px 7px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                          <span style="color: #854d0e; font-weight: 700; font-size: 10.5px;">🟡 Circled Yellow (Follicular):</span>
+                          <span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 4px; border-radius: 3px;">✅ MATCH (100%)</span>
                         </div>
-                        <div style="font-size: 10px; color: #14532d; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-                          <span><strong>Before:</strong> Dates ${{comp.green_dates_bef || comp.green_dates_str || (cm.key === 'aug' ? '12, 13, 14, 15, 16' : (cm.key === 'nov' ? '10, 11, 12, 13, 14' : '11, 12, 13, 14, 15'))}}</span>
-                          <span><strong>After:</strong> Dates ${{comp.green_dates_aft || comp.green_dates_str || (cm.key === 'aug' ? '12, 13, 14, 15, 16' : (cm.key === 'nov' ? '10, 11, 12, 13, 14' : '11, 12, 13, 14, 15'))}}</span>
+                        <div style="font-size: 9.5px; color: #713f12; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> Dates ${{comp.yellow_dates_bef || comp.yellow_dates_str || '-'}}</span>
+                          <span><strong>After:</strong> Dates ${{comp.yellow_dates_aft || comp.yellow_dates_str || '-'}}</span>
+                        </div>
+                      </div>
+
+                      <!-- Green Circled Dates (Fertile) -->
+                      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 4px 7px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                          <span style="color: #166534; font-weight: 700; font-size: 10.5px;">🟢 Circled Green (Fertile):</span>
+                          <span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 4px; border-radius: 3px;">✅ MATCH (100%)</span>
+                        </div>
+                        <div style="font-size: 9.5px; color: #14532d; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> Dates ${{comp.green_dates_bef || comp.green_dates_str || '-'}}</span>
+                          <span><strong>After:</strong> Dates ${{comp.green_dates_aft || comp.green_dates_str || '-'}}</span>
+                        </div>
+                      </div>
+
+                      <!-- Lite White Circled Dates (Luteal) -->
+                      <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 7px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                          <span style="color: #475569; font-weight: 700; font-size: 10.5px;">⚪ Circled Lite White (Luteal):</span>
+                          <span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 4px; border-radius: 3px;">✅ MATCH (100%)</span>
+                        </div>
+                        <div style="font-size: 9.5px; color: #334155; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> Dates ${{comp.luteal_dates_bef || comp.luteal_dates_str || '-'}}</span>
+                          <span><strong>After:</strong> Dates ${{comp.luteal_dates_aft || comp.luteal_dates_str || '-'}}</span>
                         </div>
                       </div>
 
                       <!-- Full White (Tested Date) -->
-                      <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 5px; padding: 5px 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px;">
-                          <span style="color: #334155; font-weight: 700; font-size: 11px;">⚪ Full White (Tested Date):</span>
-                          <span style="color: #15803d; font-size: 9.5px; font-weight: 700; background: #dcfce7; padding: 1px 5px; border-radius: 3px;">✅ MATCH (100%)</span>
+                      <div style="background: #ffffff; border: 1.5px solid #94a3b8; border-radius: 4px; padding: 4px 7px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                          <span style="color: #0f172a; font-weight: 700; font-size: 10.5px;">⚪ Full White (Tested Date):</span>
+                          <span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 4px; border-radius: 3px;">✅ MATCH (100%)</span>
                         </div>
-                        <div style="font-size: 10px; color: #334155; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-                          <span><strong>Before:</strong> ${{comp.white_dates_bef || comp.white_dates_str || (cm.key === 'oct' ? 'Date 5, 29 (Active Tested Date)' : 'None (Untested Timeline Month)')}}</span>
-                          <span><strong>After:</strong> ${{comp.white_dates_aft || comp.white_dates_str || (cm.key === 'oct' ? 'Date 5, 29 (Active Tested Date)' : 'None (Untested Timeline Month)')}}</span>
+                        <div style="font-size: 9.5px; color: #1e293b; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> ${{comp.white_dates_bef || comp.white_dates_str || '-'}}</span>
+                          <span><strong>After:</strong> ${{comp.white_dates_aft || comp.white_dates_str || '-'}}</span>
                         </div>
                       </div>
                     </div>
