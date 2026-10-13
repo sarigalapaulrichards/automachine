@@ -3308,6 +3308,7 @@ def go_to_cycle_tab(driver, suffix=""):
         if scrolled_ss:
             CURRENT_RUN_DATA["screenshots"]["session_card"] = scrolled_ss
             CURRENT_RUN_DATA["screenshots"]["my_cycle_proof"] = scrolled_ss
+            CURRENT_RUN_DATA["screenshots"]["my_cycle_before_close"] = scrolled_ss
             print(f"  Captured scrolled cycle details screenshot: {scrolled_ss}", flush=True)
 
         # Extract all dynamic metrics directly from the scrolled view while card is fully visible
@@ -3456,11 +3457,16 @@ def verify_app_lifecycle_persistence(driver, iter_idx=1):
     except Exception as cm_e:
         print(f"  Note: capture_cycle_calendar_months after: {cm_e}", flush=True)
 
-    # Scroll down on My Cycle to extract bottom stats if needed
+    # Scroll down on My Cycle to extract bottom stats and capture scrolled proof after reopen
     try:
         W, H = DEV_PROFILE.width, DEV_PROFILE.height
         _swipe(driver, int(W * 0.50), int(H * 0.70), int(W * 0.50), int(H * 0.30), duration=250)
         time.sleep(0.3)
+        ss_cycle_after_scrolled = save_screenshot(driver, f"cycle_scrolled_after_reopen_{iter_idx}")
+        if ss_cycle_after_scrolled:
+            CURRENT_RUN_DATA["screenshots"]["my_cycle_after_reopen"] = ss_cycle_after_scrolled
+            CURRENT_RUN_DATA["screenshots"]["cycle_scrolled_after"] = ss_cycle_after_scrolled
+            print(f"  Captured scrolled My Cycle details after reopen: {ss_cycle_after_scrolled}", flush=True)
         bottom_metrics = extract_my_cycle_metrics(driver)
         for bm_k in ["YOU_ARE_IN", "NEXT_PERIOD", "AVG_CYCLE", "AVG_PERIOD"]:
             if bottom_metrics.get(bm_k) and bottom_metrics[bm_k] != "N/A":

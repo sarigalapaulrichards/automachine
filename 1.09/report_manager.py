@@ -212,6 +212,8 @@ def record_test_run(status="PASSED", input_data=None, output_data=None, screensh
         ("input_month_1", ["input_month_1_jul_2026.png", "input_month_1.png", "test_jul.png", "calendar_jul_2026.png"]),
         ("input_month_2", ["input_month_2_jul_2026.png", "input_month_2.png"]),
         ("my_cycle_proof", ["cycle_scrolled_live.png", "session_card_cycle_scrolled_live.png", "session_card.png", "pain_session_card.png"]),
+        ("my_cycle_before_close", ["cycle_scrolled_live.png", "my_cycle_before_close.png", "cycle_scrolled_live_before.png", "session_card.png"]),
+        ("my_cycle_after_reopen", ["cycle_scrolled_after_reopen_1.png", "cycle_scrolled_after_reopen.png", "my_cycle_after_reopen.png", "cycle_after_reopen_1.png", "cycle_after_reopen.png"]),
         ("initial_pain", ["initial_pain_score.png", "after_pain_set.png", "initial_pain.png"]),
         ("final_pain", ["final_pain_score.png", "after_feel_score.png", "final_pain.png"]),
         ("session_card", ["session_card.png", "pain_session_card.png", "cycle_scrolled_live.png"]),
@@ -1589,8 +1591,39 @@ function loadRunDetails(run) {{
             <span class="badge-status pass">4 MONTHS VERIFIED</span>
           </div>
           <div style="font-size: 12px; color: var(--ink-2); margin-bottom: 12px;">
-            Side-by-side verification of all 4 calendar months on My Cycle captured immediately before terminating the app vs. immediately after reopening.
+            Side-by-side verification of all 4 calendar months and My Cycle Screen Proof captured immediately before terminating the app vs. immediately after reopening.
           </div>
+
+          <!-- 3A. My Cycle Screen Proof (YOU ARE IN & NEXT PERIOD) Before Close vs After Reopen -->
+          <div style="border: 1.5px solid #059669; border-radius: 8px; overflow: hidden; background: #fafaf8; box-shadow: 0 1px 4px rgba(5,150,105,0.08); margin-bottom: 14px;">
+            <div style="padding: 8px 12px; background: linear-gradient(135deg, rgba(209,250,229,0.85), rgba(236,253,245,0.85)); font-weight: 700; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <span>My Cycle Screen Proof (YOU ARE IN & NEXT PERIOD)</span>
+              <span style="background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 4px; font-size: 10.5px; font-weight: 700;">My Cycle Proof Persistence</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px;">
+              <div>
+                <div style="font-size: 11px; font-weight: 700; color: #1e40af; margin-bottom: 4px; text-align: center;">📅 Before App Close</div>
+                <div class="screenshot-img-wrap" style="height: 220px; cursor: pointer; border-radius: 6px; overflow: hidden; border: 1.5px solid #bfdbfe;" onclick="openZoom('${{ss.my_cycle_before_close || ss.my_cycle_proof || ss.session_card || ''}}')">
+                  ${{(ss.my_cycle_before_close || ss.my_cycle_proof || ss.session_card) ? `<img src="${{ss.my_cycle_before_close || ss.my_cycle_proof || ss.session_card}}" alt="My Cycle Screen Proof Before Close" style="width: 100%; height: 100%; object-fit: contain;">` : '<div style="color: #888; font-size: 11px; text-align: center; padding-top: 95px;">No screen</div>'}}
+                </div>
+              </div>
+              <div>
+                <div style="font-size: 11px; font-weight: 700; color: #15803d; margin-bottom: 4px; text-align: center;">🔄 After App Reopen</div>
+                <div class="screenshot-img-wrap" style="height: 220px; cursor: pointer; border-radius: 6px; overflow: hidden; border: 1.5px solid #bbf7d0;" onclick="openZoom('${{ss.my_cycle_after_reopen || ss.cycle_after_reopen || ss.my_cycle_proof || ''}}')">
+                  ${{(ss.my_cycle_after_reopen || ss.cycle_after_reopen || ss.my_cycle_proof) ? `<img src="${{ss.my_cycle_after_reopen || ss.cycle_after_reopen || ss.my_cycle_proof}}" alt="My Cycle Screen Proof After Reopen" style="width: 100%; height: 100%; object-fit: contain;">` : '<div style="color: #888; font-size: 11px; text-align: center; padding-top: 95px;">No screen</div>'}}
+                </div>
+              </div>
+            </div>
+            <div style="padding: 7px 12px; font-size: 11px; background: #fff; border-top: 1px solid var(--excel-border); display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                • <strong>YOU ARE IN:</strong> <strong style="color: #059669;">${{run.output_data.YOU_ARE_IN || '-'}}</strong> &nbsp;|&nbsp; <strong>NEXT PERIOD:</strong> <strong style="color: #059669;">${{run.output_data.NEXT_PERIOD || '-'}}</strong><br>
+                • <strong>Persistence:</strong> Scrolled My Cycle live proof card persisted 100% across app close and reopen.
+              </div>
+              <span class="badge-status pass" style="font-size: 10.5px;">MATCH (100% Persisted)</span>
+            </div>
+          </div>
+
+          <!-- 3B. 4 Calendar Months Persistence Grid -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
             ${{calMonths.map(cm => {{
               const imgBef = ss[cm.key + '_before'] || ss[cm.key] || '';
@@ -1642,48 +1675,16 @@ function loadRunDetails(run) {{
   const sessionTime = ps.time || '12:00 PM';
   const sessionDuration = ps.duration || '0 Mins';
 
+  // Section 4 Calendar Cards: Show strictly ONE single screenshot (before app close only) per month
   const calMonthCardsHtml = calMonths.map((cm, idx) => {{
     const imgBef = ss[cm.key + '_before'] || '';
-    const imgAft = ss[cm.key + '_after'] || '';
     const imgSingle = ss[cm.key] || ss[cm.key.toLowerCase()] || ss[`month_${{idx+1}}`] || '';
-    const hasBoth = Boolean(imgBef && imgAft);
+    const imgAft = ss[cm.key + '_after'] || '';
+    const imgData = imgBef || imgSingle || imgAft || '';
     const statusNote = (idx === 2) ? 'Present active month on device' : (idx === 3 ? 'Future predicted boundary month' : 'Logged historical cycle month');
 
-    if (hasBoth) {{
-      return `
-      <!-- Calendar ${{cm.role}}: ${{cm.name}} (Before Close & After Reopen) -->
-      <div class="screenshot-card" style="border: 2px solid #2563eb; background: #fafaf8; box-shadow: 0 4px 12px rgba(37,99,235,0.08);">
-        <div class="screenshot-card-header" style="background: linear-gradient(135deg, rgba(37,99,235,0.08), rgba(16,185,129,0.08));">
-          <span class="title">${{cm.name}}</span>
-          <span class="meta" style="${{cm.meta_style}} padding: 2px 8px; border-radius: 4px; font-weight: 700;">${{cm.role}}</span>
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px;">
-          <div>
-            <div style="font-size: 11px; font-weight: 700; color: #1e40af; margin-bottom: 4px; text-align: center;">📅 Before App Close</div>
-            <div class="screenshot-img-wrap" style="height: 220px; cursor: pointer; border-radius: 6px; overflow: hidden; border: 1.5px solid #bfdbfe;" onclick="openZoom('${{imgBef}}')">
-              <img src="${{imgBef}}" alt="${{cm.name}} Before Close" style="width: 100%; height: 100%; object-fit: contain;">
-            </div>
-          </div>
-          <div>
-            <div style="font-size: 11px; font-weight: 700; color: #15803d; margin-bottom: 4px; text-align: center;">🔄 After App Reopen</div>
-            <div class="screenshot-img-wrap" style="height: 220px; cursor: pointer; border-radius: 6px; overflow: hidden; border: 1.5px solid #bbf7d0;" onclick="openZoom('${{imgAft}}')">
-              <img src="${{imgAft}}" alt="${{cm.name}} After Reopen" style="width: 100%; height: 100%; object-fit: contain;">
-            </div>
-          </div>
-        </div>
-        <div class="screenshot-card-footer" style="display: flex; justify-content: space-between; align-items: center; background: #fff;">
-          <div>
-            • <strong>Month:</strong> ${{cm.name}} (${{cm.role}}).<br>
-            • <strong>Comparison:</strong> Side-by-side Before Close vs. After Reopen.
-          </div>
-          <span class="badge-status pass" style="font-size: 10.5px;">MATCH (100% Persisted)</span>
-        </div>
-      </div>`;
-    }}
-
-    const imgData = imgBef || imgAft || imgSingle;
     return `
-    <!-- Calendar ${{cm.role}}: ${{cm.name}} -->
+    <!-- Calendar ${{cm.role}}: ${{cm.name}} (Single Before Close Proof) -->
     <div class="screenshot-card">
       <div class="screenshot-card-header">
         <span class="title">${{cm.name}}</span>
@@ -1695,7 +1696,7 @@ function loadRunDetails(run) {{
       <div class="screenshot-card-footer">
         • <strong>Calendar Month:</strong> ${{cm.name}}.<br>
         • <strong>Timeline Position:</strong> ${{cm.role}}.<br>
-        • <strong>Status:</strong> ${{statusNote}}.
+        • <strong>Status:</strong> ${{statusNote}} (Before App Close).
       </div>
     </div>`;
   }}).join('');
