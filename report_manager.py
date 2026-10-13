@@ -565,19 +565,27 @@ def compare_calendar_colored_dates(path_before, path_after, month_key='oct'):
             similarity = 100.0 * (1.0 - (differing_pixels / float(total_pixels))) if total_pixels else 100.0
 
             d2 = _extract_calendar_grid_dates(res_aft, month_key)
-            is_match = similarity >= 94.0 or (
-                d1.get("red_dates") == d2.get("red_dates") and
-                d1.get("yellow_dates") == d2.get("yellow_dates") and
-                d1.get("green_dates") == d2.get("green_dates") and
-                d1.get("luteal_dates") == d2.get("luteal_dates")
-            )
 
-        label = "MATCH (100% Persisted)" if is_match else f"DIFF ({similarity:.1f}% Match)"
+        red_match = (d1.get("red_dates") == d2.get("red_dates"))
+        yellow_match = (d1.get("yellow_dates") == d2.get("yellow_dates"))
+        green_match = (d1.get("green_dates") == d2.get("green_dates"))
+        luteal_match = (d1.get("luteal_dates") == d2.get("luteal_dates"))
+        white_match = (d1.get("white_dates") == d2.get("white_dates"))
+
+        all_dates_match = red_match and yellow_match and green_match and luteal_match and white_match
+        is_match = all_dates_match and (similarity >= 90.0)
+        label = "MATCH (100% Persisted)" if is_match else f"FAIL (Dates Mismatched - {similarity:.1f}% Similarity)"
 
         res = {
             "similarity": round(similarity, 1),
             "is_match": is_match,
             "match_label": label,
+            "all_match": all_dates_match,
+            "red_match": red_match,
+            "yellow_match": yellow_match,
+            "green_match": green_match,
+            "luteal_match": luteal_match,
+            "white_match": white_match,
             "red_dates": d1["red_dates"],
             "yellow_dates": d1["yellow_dates"],
             "green_dates": d1["green_dates"],
@@ -2033,10 +2041,36 @@ function loadRunDetails(run) {{
                 today: 'White Circle (Persisted)'
               }};
               const simVal = comp.similarity !== undefined ? comp.similarity : 100;
+              const rBef = comp.red_dates_bef || comp.red_dates_str || '-';
+              const rAft = comp.red_dates_aft || comp.red_dates_str || '-';
+              const redMatch = (comp.red_match !== undefined ? comp.red_match : true) && (rBef === rAft);
+
+              const yBef = comp.yellow_dates_bef || comp.yellow_dates_str || '-';
+              const yAft = comp.yellow_dates_aft || comp.yellow_dates_str || '-';
+              const yellowMatch = (comp.yellow_match !== undefined ? comp.yellow_match : true) && (yBef === yAft);
+
+              const gBef = comp.green_dates_bef || comp.green_dates_str || '-';
+              const gAft = comp.green_dates_aft || comp.green_dates_str || '-';
+              const greenMatch = (comp.green_match !== undefined ? comp.green_match : true) && (gBef === gAft);
+
+              const lBef = comp.luteal_dates_bef || comp.luteal_dates_str || '-';
+              const lAft = comp.luteal_dates_aft || comp.luteal_dates_str || '-';
+              const lutealMatch = (comp.luteal_match !== undefined ? comp.luteal_match : true) && (lBef === lAft);
+
+              const wBef = comp.white_dates_bef || comp.white_dates_str || '-';
+              const wAft = comp.white_dates_aft || comp.white_dates_str || '-';
+              const whiteMatch = (comp.white_match !== undefined ? comp.white_match : true) && (wBef === wAft);
+
+              const allDatesMatch = redMatch && yellowMatch && greenMatch && lutealMatch && whiteMatch;
+              const isMonthMatch = (comp.is_match !== undefined ? comp.is_match : true) && allDatesMatch;
+
+              const badgeMatch = `<span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 6px; border-radius: 3px; border: 1px solid #86efac;">✅ MATCH (100%)</span>`;
+              const badgeFail = `<span style="color: #991b1b; font-size: 9px; font-weight: 700; background: #fee2e2; padding: 1px 6px; border-radius: 3px; border: 1px solid #f87171;">❌ FAIL</span>`;
+
               return `
-                <div style="border: 1.5px solid var(--excel-border); border-radius: 8px; overflow: hidden; background: #fafaf8; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
-                  <div style="padding: 8px 10px; background: #f0f4f9; font-weight: 700; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
-                    <span>${{cm.name}}</span>
+                <div style="border: 1.5px solid ${{isMonthMatch ? 'var(--excel-border)' : '#fca5a5'}}; border-radius: 8px; overflow: hidden; background: #fafaf8; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                  <div style="padding: 8px 10px; background: ${{isMonthMatch ? '#f0f4f9' : '#fef2f2'}}; font-weight: 700; font-size: 12px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="${{isMonthMatch ? '' : 'color: #991b1b;'}}">${{cm.name}}</span>
                     <span style="${{cm.meta_style}} padding: 1px 6px; border-radius: 4px; font-size: 10.5px;">${{cm.role}}</span>
                   </div>
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px;">
@@ -2055,78 +2089,83 @@ function loadRunDetails(run) {{
                   </div>
                   <!-- Circled Dates Comparison & Persistence Verification (Down Below) -->
                   <div style="padding: 9px 11px; font-size: 11px; background: #ffffff; border-top: 1.5px solid var(--excel-border);">
-                    <div style="font-weight: 700; color: #174ea6; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-weight: 700; color: ${{isMonthMatch ? '#174ea6' : '#991b1b'}}; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
                       <span>🔍 Circled Dates Comparison:</span>
-                      <span style="font-size: 10px; color: #059669; font-weight: 700;">Sim: ${{simVal}}%</span>
+                      <span style="font-size: 10px; color: ${{isMonthMatch ? '#059669' : '#dc2626'}}; font-weight: 700;">Sim: ${{simVal}}%</span>
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 4px; margin-bottom: 7px;">
                       <!-- Red Circled Dates (Period) -->
-                      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 4px 7px;">
+                      <div style="background: ${{redMatch ? '#fef2f2' : '#fff5f5'}}; border: 1px solid ${{redMatch ? '#fecaca' : '#f87171'}}; border-radius: 4px; padding: 4px 7px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                           <span style="color: #991b1b; font-weight: 700; font-size: 10.5px;">🔴 Circled Red (Period):</span>
-                          <span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 4px; border-radius: 3px;">✅ MATCH (100%)</span>
+                          ${{redMatch ? badgeMatch : badgeFail}}
                         </div>
-                        <div style="font-size: 9.5px; color: #7f1d1d; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-                          <span><strong>Before:</strong> Dates ${{comp.red_dates_bef || comp.red_dates_str || '-'}}</span>
-                          <span><strong>After:</strong> Dates ${{comp.red_dates_aft || comp.red_dates_str || '-'}}</span>
+                        <div style="font-size: 9.5px; color: ${{redMatch ? '#7f1d1d' : '#991b1b'}}; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> Dates ${{rBef}}</span>
+                          <span><strong>After:</strong> Dates ${{rAft}}</span>
                         </div>
                       </div>
 
                       <!-- Yellow Circled Dates (Follicular) -->
-                      <div style="background: #fefce8; border: 1px solid #fef08a; border-radius: 4px; padding: 4px 7px;">
+                      <div style="background: ${{yellowMatch ? '#fefce8' : '#fff5f5'}}; border: 1px solid ${{yellowMatch ? '#fef08a' : '#f87171'}}; border-radius: 4px; padding: 4px 7px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                           <span style="color: #854d0e; font-weight: 700; font-size: 10.5px;">🟡 Circled Yellow (Follicular):</span>
-                          <span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 4px; border-radius: 3px;">✅ MATCH (100%)</span>
+                          ${{yellowMatch ? badgeMatch : badgeFail}}
                         </div>
-                        <div style="font-size: 9.5px; color: #713f12; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-                          <span><strong>Before:</strong> Dates ${{comp.yellow_dates_bef || comp.yellow_dates_str || '-'}}</span>
-                          <span><strong>After:</strong> Dates ${{comp.yellow_dates_aft || comp.yellow_dates_str || '-'}}</span>
+                        <div style="font-size: 9.5px; color: ${{yellowMatch ? '#713f12' : '#991b1b'}}; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> Dates ${{yBef}}</span>
+                          <span><strong>After:</strong> Dates ${{yAft}}</span>
                         </div>
                       </div>
 
                       <!-- Green Circled Dates (Fertile) -->
-                      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 4px 7px;">
+                      <div style="background: ${{greenMatch ? '#f0fdf4' : '#fff5f5'}}; border: 1px solid ${{greenMatch ? '#bbf7d0' : '#f87171'}}; border-radius: 4px; padding: 4px 7px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                           <span style="color: #166534; font-weight: 700; font-size: 10.5px;">🟢 Circled Green (Fertile):</span>
-                          <span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 4px; border-radius: 3px;">✅ MATCH (100%)</span>
+                          ${{greenMatch ? badgeMatch : badgeFail}}
                         </div>
-                        <div style="font-size: 9.5px; color: #14532d; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-                          <span><strong>Before:</strong> Dates ${{comp.green_dates_bef || comp.green_dates_str || '-'}}</span>
-                          <span><strong>After:</strong> Dates ${{comp.green_dates_aft || comp.green_dates_str || '-'}}</span>
+                        <div style="font-size: 9.5px; color: ${{greenMatch ? '#14532d' : '#991b1b'}}; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> Dates ${{gBef}}</span>
+                          <span><strong>After:</strong> Dates ${{gAft}}</span>
                         </div>
                       </div>
 
                       <!-- Lite White Circled Dates (Luteal) -->
-                      <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 4px 7px;">
+                      <div style="background: ${{lutealMatch ? '#f1f5f9' : '#fff5f5'}}; border: 1px solid ${{lutealMatch ? '#cbd5e1' : '#f87171'}}; border-radius: 4px; padding: 4px 7px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                           <span style="color: #475569; font-weight: 700; font-size: 10.5px;">⚪ Circled Lite White (Luteal):</span>
-                          <span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 4px; border-radius: 3px;">✅ MATCH (100%)</span>
+                          ${{lutealMatch ? badgeMatch : badgeFail}}
                         </div>
-                        <div style="font-size: 9.5px; color: #334155; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-                          <span><strong>Before:</strong> Dates ${{comp.luteal_dates_bef || comp.luteal_dates_str || '-'}}</span>
-                          <span><strong>After:</strong> Dates ${{comp.luteal_dates_aft || comp.luteal_dates_str || '-'}}</span>
+                        <div style="font-size: 9.5px; color: ${{lutealMatch ? '#334155' : '#991b1b'}}; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> Dates ${{lBef}}</span>
+                          <span><strong>After:</strong> Dates ${{lAft}}</span>
                         </div>
                       </div>
 
                       <!-- Full White (Tested Date) -->
-                      <div style="background: #ffffff; border: 1.5px solid #94a3b8; border-radius: 4px; padding: 4px 7px;">
+                      <div style="background: ${{whiteMatch ? '#ffffff' : '#fff5f5'}}; border: 1.5px solid ${{whiteMatch ? '#94a3b8' : '#f87171'}}; border-radius: 4px; padding: 4px 7px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                           <span style="color: #0f172a; font-weight: 700; font-size: 10.5px;">⚪ Full White (Tested Date):</span>
-                          <span style="color: #15803d; font-size: 9px; font-weight: 700; background: #dcfce7; padding: 1px 4px; border-radius: 3px;">✅ MATCH (100%)</span>
+                          ${{whiteMatch ? badgeMatch : badgeFail}}
                         </div>
-                        <div style="font-size: 9.5px; color: #1e293b; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
-                          <span><strong>Before:</strong> ${{comp.white_dates_bef || comp.white_dates_str || '-'}}</span>
-                          <span><strong>After:</strong> ${{comp.white_dates_aft || comp.white_dates_str || '-'}}</span>
+                        <div style="font-size: 9.5px; color: ${{whiteMatch ? '#1e293b' : '#991b1b'}}; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                          <span><strong>Before:</strong> ${{wBef}}</span>
+                          <span><strong>After:</strong> ${{wAft}}</span>
                         </div>
                       </div>
                     </div>
 
                     <div style="text-align: center; padding-top: 2px;">
-                      <span class="badge-status pass" style="font-size: 11px; font-weight: 700; padding: 3px 12px; display: inline-block;">
-                        ${{comp.match_label || 'MATCH (100% Persisted)'}}
-                      </span>
-                    </div>
+                      ${{isMonthMatch ? `
+                        <span class="badge-status pass" style="font-size: 11px; font-weight: 700; padding: 4px 14px; display: inline-block;">
+                          MATCH (100% Persisted)
+                        </span>
+                      ` : `
+                        <span class="badge-status fail" style="font-size: 11px; font-weight: 700; padding: 4px 14px; display: inline-block; background: #fee2e2; color: #991b1b; border: 1.5px solid #dc2626;">
+                          ❌ FAIL (Dates Mismatch)
+                        </span>
+                      `}}
                   </div>
                 </div>
               `;

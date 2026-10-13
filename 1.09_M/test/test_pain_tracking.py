@@ -3518,7 +3518,23 @@ def verify_app_lifecycle_persistence(driver, iter_idx=1):
                 "today": "White Circle (Persisted)"
             }
 
+        red_match = (comp_info.get("red_dates_bef") == comp_info.get("red_dates_aft"))
+        yellow_match = (comp_info.get("yellow_dates_bef") == comp_info.get("yellow_dates_aft"))
+        green_match = (comp_info.get("green_dates_bef") == comp_info.get("green_dates_aft"))
+        luteal_match = (comp_info.get("luteal_dates_bef") == comp_info.get("luteal_dates_aft"))
+        white_match = (comp_info.get("white_dates_bef") == comp_info.get("white_dates_aft"))
+        all_dates_match = red_match and yellow_match and green_match and luteal_match and white_match
+        cal_month_match = comp_info.get("is_match", True) and all_dates_match
+
+        comp_info["red_match"] = red_match
+        comp_info["yellow_match"] = yellow_match
+        comp_info["green_match"] = green_match
+        comp_info["luteal_match"] = luteal_match
+        comp_info["white_match"] = white_match
+        comp_info["is_match"] = cal_month_match
+        comp_info["match_label"] = "MATCH (100% Persisted)" if cal_month_match else "FAIL (Dates Mismatch)"
         cal_comparisons[m_k] = comp_info
+
         calendar_matches[m_k] = {
             "name": cm_item["name"],
             "role": cm_item.get("role", ""),
@@ -3545,8 +3561,8 @@ def verify_app_lifecycle_persistence(driver, iter_idx=1):
             "fertile": comp_info.get("fertile", "Persisted"),
             "luteal": comp_info.get("luteal", "Persisted"),
             "today": comp_info.get("today", "Persisted"),
-            "match_label": comp_info.get("match_label", "MATCH (100% Persisted)"),
-            "match": comp_info.get("is_match", True)
+            "match_label": "MATCH (100% Persisted)" if cal_month_match else "FAIL (Dates Mismatch)",
+            "match": cal_month_match
         }
     CURRENT_RUN_DATA["calendar_comparison"] = cal_comparisons
 
