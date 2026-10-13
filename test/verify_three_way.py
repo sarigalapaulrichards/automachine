@@ -3,7 +3,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from datetime import date
-from cycle_predictor_algorithm import run_parallel_cycle_algorithm as run_first
+from Algo1 import run_algo1 as run_first
 from second_cycle_algorithm import run_second_cycle_algorithm as run_second, compare_all_three
 
 sample_inputs = {
@@ -26,11 +26,11 @@ cmp = compare_all_three(sample_app, r1, r2)
 
 print("\n" + "=" * 70)
 print(f"  3-WAY COMPARISON VERIFICATION: Overall All Match: {cmp['all_pass']}")
-print(f"  Ours (App) vs First Algorithm : [{cmp['ours_vs_first_status']}]")
-print(f"  Ours (App) vs Second Algorithm: [{cmp['ours_vs_second_status']}]")
-print(f"  First Algo vs Second Algorithm: [{cmp['first_vs_second_status']}]")
+print(f"  Ours (App) vs Algo1 (CM-191)  : [{cmp['ours_vs_first_status']}]")
+print(f"  Ours (App) vs Algo2 (Second)  : [{cmp['ours_vs_second_status']}]")
+print(f"  Algo1 vs Algo2 Consistency    : [{cmp['first_vs_second_status']}]")
 print("=" * 70)
-print(f"{'Field':<16} | {'Ours (App)':<14} | {'First Algo':<14} | {'Second Algo':<14} | {'Status':<10}")
+print(f"{'Field':<16} | {'Ours (App)':<14} | {'Algo1':<14} | {'Algo2':<14} | {'Status':<10}")
 print("-" * 75)
 for row in cmp["rows"]:
     status = "MATCH" if (row["ours_vs_first"] and row["ours_vs_second"] and row["first_vs_second"]) else "DIFF"

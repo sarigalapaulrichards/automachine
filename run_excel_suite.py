@@ -38,7 +38,7 @@ from appium.options.android import UiAutomator2Options
 
 import test_pain_tracking as tpt
 from report_manager import clear_history, record_test_run
-from cycle_predictor_algorithm import run_parallel_cycle_algorithm as run_first_algo
+from Algo1 import run_algo1 as run_first_algo
 from second_cycle_algorithm import run_second_cycle_algorithm as run_second_algo, compare_all_three
 
 EXCEL_PATH = os.environ.get("EXCEL_PATH", tpt.EXCEL_PATH)

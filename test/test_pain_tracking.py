@@ -4257,10 +4257,10 @@ def run_single_test_iteration(driver, iteration_data=None):
         go_to_profile(driver)
         delete_account(driver)
 
-        # Run parallel multi-algorithm comparison (Ours vs First vs Second Algorithm)
+        # Run parallel multi-algorithm comparison (Ours vs Algo1 vs Algo2)
         try:
             from datetime import date
-            from cycle_predictor_algorithm import run_parallel_cycle_algorithm as run_first_algo
+            from Algo1 import run_algo1 as run_first_algo
             from second_cycle_algorithm import run_second_cycle_algorithm as run_second_algo, compare_all_three
 
             first_res = run_first_algo(
@@ -4280,13 +4280,13 @@ def run_single_test_iteration(driver, iteration_data=None):
             )
 
             print("\n" + "=" * 75)
-            print("  PARALLEL MULTI-ALGORITHM VERIFICATION (Ours vs First vs Second)")
+            print("  PARALLEL MULTI-ALGORITHM VERIFICATION (Ours vs Algo1 vs Algo2)")
             print("=" * 75)
-            print(f"  Ours (App Live) vs First Algorithm  : [{first_res['overall_status']}]")
-            print(f"  Ours (App Live) vs Second Algorithm : [{second_res['overall_status']}]")
-            print(f"  First Algorithm vs Second Algorithm : [{cmp_3way['first_vs_second_status']}]")
+            print(f"  Ours (App Live) vs Algo1 (CM-191)   : [{first_res['overall_status']}]")
+            print(f"  Ours (App Live) vs Algo2 (Second)   : [{second_res['overall_status']}]")
+            print(f"  Algo1 vs Algo2 Consistency          : [{cmp_3way['first_vs_second_status']}]")
             print("-" * 75)
-            print(f"  {'Field':<15} | {'Ours (App)':<12} | {'First Algo':<12} | {'Second Algo':<12} | Status")
+            print(f"  {'Field':<15} | {'Ours (App)':<12} | {'Algo1':<12} | {'Algo2':<12} | Status")
             print(f"  {'-'*71}")
             for row in cmp_3way.get("rows", []):
                 st = "MATCH" if (row["ours_vs_first"] and row["ours_vs_second"] and row["first_vs_second"]) else "DIFF"

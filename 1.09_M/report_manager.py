@@ -5,7 +5,7 @@ import shutil
 import time
 from datetime import datetime
 
-from cycle_predictor_algorithm import run_parallel_cycle_algorithm as run_first_cycle_algorithm
+from Algo1 import run_algo1 as run_first_cycle_algorithm, run_algo1
 from second_cycle_algorithm import run_second_cycle_algorithm, compare_all_three
 
 _dev_udid = os.environ.get("DEVICE_UDID")
@@ -181,11 +181,11 @@ def record_test_run(status="PASSED", input_data=None, output_data=None, screensh
     print(f"\n{'='*75}")
     print(f"  MULTI-ALGORITHM PARALLEL VERIFICATION: RUN {run_id}")
     print(f"{'='*75}")
-    print(f"  Ours (App Live) vs First Algorithm  : {'[PASS]' if first_pass else '[FAIL]'}")
-    print(f"  Ours (App Live) vs Second Algorithm : {'[PASS]' if second_pass else '[FAIL]'}")
-    print(f"  First Algorithm vs Second Algorithm : {'[MATCH]' if cross_pass else '[DIFF]'}")
+    print(f"  Ours (App Live) vs Algo1 (CM-191)   : {'[PASS]' if first_pass else '[FAIL]'}")
+    print(f"  Ours (App Live) vs Algo2 (Second)   : {'[PASS]' if second_pass else '[FAIL]'}")
+    print(f"  Algo1 vs Algo2 Consistency          : {'[MATCH]' if cross_pass else '[DIFF]'}")
     print(f"{'-'*75}")
-    print(f"  {'Field':<15} | {'Ours (App)':<12} | {'First Algo':<12} | {'Second Algo':<12} | Status")
+    print(f"  {'Field':<15} | {'Ours (App)':<12} | {'Algo1':<12} | {'Algo2':<12} | Status")
     print(f"  {'-'*71}")
     for row in three_way_comparison.get("rows", []):
         st = "MATCH" if (row["ours_vs_first"] and row["ours_vs_second"] and row["first_vs_second"]) else "DIFF"
@@ -1277,9 +1277,9 @@ def generate_html_report(history=None):
             <th>Date & Time</th>
             <th style="background: #eaf1fb; color: #174ea6; font-weight: 700;">Present Date</th>
             <th>Test Status</th>
-            <th>1st Algo (First)</th>
-            <th>2nd Algo (Second)</th>
-            <th>1st vs 2nd</th>
+            <th>Algo1 (CM-191)</th>
+            <th>Algo2 (Second)</th>
+            <th>Algo1 vs Algo2</th>
             <th>Pain Score</th>
             <th style="background: #ecfdf5; color: #065f46; font-weight: 700;">App Persistence</th>
             <th>Cycles Configured</th>
@@ -1316,32 +1316,32 @@ def generate_html_report(history=None):
 
   <!-- MULTI-ALGORITHM PARALLEL VERIFICATION SECTION -->
   <section class="panel">
-    <h2>1. Multi-Algorithm Parallel Verification (Ours vs First vs Second Algorithm)</h2>
+    <h2>1. Multi-Algorithm Parallel Verification (Ours vs Algo1 vs Algo2)</h2>
     
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 16px;">
-      <!-- Card 1: Ours vs First -->
+      <!-- Card 1: Ours vs Algo1 -->
       <div id="firstAlgoCard" class="algo-banner pass" style="margin-bottom: 0;">
         <div>
-          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85;">First Algorithm Comparison</div>
-          <div id="firstAlgoTitle" style="font-weight: 700; font-size: 14px; margin-top: 2px;">Ours vs 1st Algo: PASS</div>
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85;">Algo1 (CM-191 Oracle) Comparison</div>
+          <div id="firstAlgoTitle" style="font-weight: 700; font-size: 14px; margin-top: 2px;">Ours vs Algo1: PASS</div>
         </div>
         <span id="firstAlgoBadge" class="badge-status pass">MATCH</span>
       </div>
 
-      <!-- Card 2: Ours vs Second -->
+      <!-- Card 2: Ours vs Algo2 -->
       <div id="secondAlgoCard" class="algo-banner pass" style="margin-bottom: 0;">
         <div>
-          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85;">Second Algorithm Comparison</div>
-          <div id="secondAlgoTitle" style="font-weight: 700; font-size: 14px; margin-top: 2px;">Ours vs 2nd Algo: PASS</div>
+          <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85;">Algo2 Comparison</div>
+          <div id="secondAlgoTitle" style="font-weight: 700; font-size: 14px; margin-top: 2px;">Ours vs Algo2: PASS</div>
         </div>
         <span id="secondAlgoBadge" class="badge-status pass">MATCH</span>
       </div>
 
-      <!-- Card 3: First vs Second -->
+      <!-- Card 3: Algo1 vs Algo2 -->
       <div id="crossAlgoCard" class="algo-banner pass" style="margin-bottom: 0;">
         <div>
           <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.85;">Cross-Algorithm Consistency</div>
-          <div id="crossAlgoTitle" style="font-weight: 700; font-size: 14px; margin-top: 2px;">1st vs 2nd Algo: MATCH</div>
+          <div id="crossAlgoTitle" style="font-weight: 700; font-size: 14px; margin-top: 2px;">Algo1 vs Algo2: MATCH</div>
         </div>
         <span id="crossAlgoBadge" class="badge-status pass">100% AGREEMENT</span>
       </div>
@@ -1353,11 +1353,11 @@ def generate_html_report(history=None):
           <tr>
             <th>Metric Field</th>
             <th>Ours (App Live via USB)</th>
-            <th>First Algorithm</th>
-            <th>Second Algorithm</th>
-            <th>Ours vs 1st</th>
-            <th>Ours vs 2nd</th>
-            <th>1st vs 2nd</th>
+            <th>Algo1 (CM-191 Oracle)</th>
+            <th>Algo2 (Second)</th>
+            <th>Ours vs Algo1</th>
+            <th>Ours vs Algo2</th>
+            <th>Algo1 vs Algo2</th>
             <th>Verification Notes</th>
           </tr>
         </thead>
@@ -1617,11 +1617,11 @@ function renderCleanState() {{
   if (mPsDet) mPsDet.textContent = 'No test data';
 
   const fTitle = document.getElementById('firstAlgoTitle');
-  if (fTitle) fTitle.textContent = 'Ours vs 1st Algo: –';
+  if (fTitle) fTitle.textContent = 'Ours vs Algo1: –';
   const sTitle = document.getElementById('secondAlgoTitle');
-  if (sTitle) sTitle.textContent = 'Ours vs 2nd Algo: –';
+  if (sTitle) sTitle.textContent = 'Ours vs Algo2: –';
   const cTitle = document.getElementById('crossAlgoTitle');
-  if (cTitle) cTitle.textContent = '1st vs 2nd Algo: –';
+  if (cTitle) cTitle.textContent = 'Algo1 vs Algo2: –';
 
   const multiBody = document.getElementById('multiAlgoComparisonBody');
   if (multiBody) multiBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 24px; color: var(--ink-3);">No active run selected (Cleaned).</td></tr>';
@@ -1755,7 +1755,7 @@ function loadRunDetails(run) {{
   const card1 = document.getElementById('firstAlgoCard');
   if (card1) card1.className = `algo-banner ${{is1stPass ? 'pass' : 'fail'}}`;
   const fTitle = document.getElementById('firstAlgoTitle');
-  if (fTitle) fTitle.textContent = `Ours vs 1st Algo: ${{is1stPass ? 'PASS' : 'FAIL'}}`;
+  if (fTitle) fTitle.textContent = `Ours vs Algo1: ${{is1stPass ? 'PASS' : 'FAIL'}}`;
   const fBadge = document.getElementById('firstAlgoBadge');
   if (fBadge) {{
     fBadge.className = `badge-status ${{is1stPass ? 'pass' : 'fail'}}`;
@@ -1766,18 +1766,18 @@ function loadRunDetails(run) {{
   const card2 = document.getElementById('secondAlgoCard');
   if (card2) card2.className = `algo-banner ${{is2ndPass ? 'pass' : 'fail'}}`;
   const sTitle = document.getElementById('secondAlgoTitle');
-  if (sTitle) sTitle.textContent = `Ours vs 2nd Algo: ${{is2ndPass ? 'PASS' : 'FAIL'}}`;
+  if (sTitle) sTitle.textContent = `Ours vs Algo2: ${{is2ndPass ? 'PASS' : 'FAIL'}}`;
   const sBadge = document.getElementById('secondAlgoBadge');
   if (sBadge) {{
     sBadge.className = `badge-status ${{is2ndPass ? 'pass' : 'fail'}}`;
     sBadge.textContent = is2ndPass ? 'MATCH' : 'MISMATCH';
   }}
 
-  // Card 3: First vs Second
+  // Card 3: Algo1 vs Algo2
   const card3 = document.getElementById('crossAlgoCard');
   if (card3) card3.className = `algo-banner ${{is1v2Pass ? 'pass' : 'fail'}}`;
   const cTitle = document.getElementById('crossAlgoTitle');
-  if (cTitle) cTitle.textContent = `1st vs 2nd Algo: ${{is1v2Pass ? 'MATCH' : 'DIFFERENCE'}}`;
+  if (cTitle) cTitle.textContent = `Algo1 vs Algo2: ${{is1v2Pass ? 'MATCH' : 'DIFFERENCE'}}`;
   const cBadge = document.getElementById('crossAlgoBadge');
   if (cBadge) {{
     cBadge.className = `badge-status ${{is1v2Pass ? 'pass' : 'fail'}}`;
