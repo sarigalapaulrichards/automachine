@@ -106,6 +106,7 @@ CYCLE_PAIN_ONSET = "A day or two before my period"
 CYCLE_PAIN_INTENSITY = "Mild"     # "Mild" | "Moderate" | "Severe" | "It varies cycle to cycle"
 SKIP_PAIN_SESSION = os.environ.get("SKIP_PAIN_SESSION", "false").lower() in ("true", "1", "yes", "y", "skip")
 PROMPTED_SKIP_PAIN = False
+CHECK_POPUPS = True  # Controls checking of 4 new popups/toasts; overridden per iteration by Excel
 
 # --- EXCEL DATA CONNECTION ---
 # Automatically connects to Excel file for data-driven testing:
@@ -448,22 +449,32 @@ def capture_toast_popup(driver, key, text_patterns, screenshot_name, label, time
     return found
 
 
-def accept_terms_and_privacy(driver):
+def accept_terms_and_privacy(driver, check_popup=None):
+    if check_popup is None:
+        check_popup = CHECK_POPUPS
     print("Step: Terms & Privacy (this screen can be slow to load)...")
     if not screen_has(driver, "//*[contains(@text,'Terms')]", timeout=30):
         print("  Terms & Privacy screen never appeared.")
         return False
 
     # ---------- TEST CASE: 'Login Successful!' toast ----------
-    print("\n  [TEST CASE] Checking for 'Login Successful!' toast...")
-    capture_toast_popup(
-        driver,
-        key="login_success_toast",
-        text_patterns=["Login Successful", "Login successful", "Logged in"],
-        screenshot_name="login_successful_toast",
-        label="Login Successful!",
-        timeout=6,
-    )
+    # Controlled by Excel 'check pop up' column (Yes/No).
+    if check_popup:
+        print("\n  [TEST CASE] Checking for 'Login Successful!' toast...")
+        capture_toast_popup(
+            driver,
+            key="login_success_toast",
+            text_patterns=["Login Successful", "Login successful", "Logged in"],
+            screenshot_name="login_successful_toast",
+            label="Login Successful!",
+            timeout=6,
+        )
+    else:
+        print("\n  [SKIP] 'Login Successful!' toast check skipped (Excel check pop up: No).")
+        CURRENT_RUN_DATA["outputs"]["login_success_toast"] = {
+            "status": "SKIPPED",
+            "detail": "Skipped per Excel configuration (check pop up: No)."
+        }
 
     time.sleep(1)  # reduced from 2 -- we already spent time polling above
 
@@ -565,7 +576,9 @@ def tap_top_right_skip(driver):
     time.sleep(1.5)
 
 
-def skip_pod_pairing_screen(driver):
+def skip_pod_pairing_screen(driver, check_popup=None):
+    if check_popup is None:
+        check_popup = CHECK_POPUPS
     """
     Handles the 'Connect your Curapod-M' hardware-pairing screen that
     appears right after Terms & Privacy. It has a 'Skip' link in the
@@ -575,15 +588,23 @@ def skip_pod_pairing_screen(driver):
     print("Step: 'Connect your Curapod-M' pod-pairing screen...")
 
     # ---------- TEST CASE: 'Account created successfully!' toast ----------
-    print("  [TEST CASE] Checking for 'Account created successfully!' toast...")
-    capture_toast_popup(
-        driver,
-        key="account_created_toast",
-        text_patterns=["Account created successfully", "account created", "created successfully"],
-        screenshot_name="account_created_toast",
-        label="Account created successfully!",
-        timeout=8,
-    )
+    # Controlled by Excel 'check pop up' column (Yes/No).
+    if check_popup:
+        print("  [TEST CASE] Checking for 'Account created successfully!' toast...")
+        capture_toast_popup(
+            driver,
+            key="account_created_toast",
+            text_patterns=["Account created successfully", "account created", "created successfully"],
+            screenshot_name="account_created_toast",
+            label="Account created successfully!",
+            timeout=8,
+        )
+    else:
+        print("  [SKIP] 'Account created successfully!' toast check skipped (Excel check pop up: No).")
+        CURRENT_RUN_DATA["outputs"]["account_created_toast"] = {
+            "status": "SKIPPED",
+            "detail": "Skipped per Excel configuration (check pop up: No)."
+        }
 
     for _ in range(12):
         if screen_has(driver, "//*[contains(@text,'Connect your Curapod')]", timeout=1):
@@ -602,9 +623,9 @@ def skip_pod_pairing_screen(driver):
     return True
 
 
-def tap_skip_then_continues(driver):
+def tap_skip_then_continues(driver, check_popup=None):
     # Pod-pairing screen's own Skip button; the two subsequent Continue screens are removed
-    skip_pod_pairing_screen(driver)
+    skip_pod_pairing_screen(driver, check_popup=check_popup)
 
 
 # ---------- NEW: "About you" screens ----------
@@ -1132,8 +1153,10 @@ def load_excel_iterations(excel_path=None):
         col_dates = 2
         col_len = 3
         col_skip = 4
-        col_initial = 5
-        col_final = 6
+        col_close_app = 5
+        col_check_popup = 6
+        col_initial = 7
+        col_final = 8
 
         # Check if Row 1 is actual data (e.g. cycles count and cycle length are numbers)
         first_c1 = sheet.cell(1, 1).value
@@ -1148,7 +1171,7 @@ def load_excel_iterations(excel_path=None):
             start_row = 1
         else:
             start_row = 2
-            for c in range(1, min(sheet.max_column + 1, 15)):
+            for c in range(1, min(sheet.max_column + 1, 20)):
                 val = sheet.cell(1, c).value
                 if val:
                     val_s = str(val).strip().lower()
@@ -1156,6 +1179,10 @@ def load_excel_iterations(excel_path=None):
                         col_len = c
                     elif "date" in val_s:
                         col_dates = c
+                    elif "close" in val_s or "reopen" in val_s or "restart" in val_s:
+                        col_close_app = c
+                    elif "pop" in val_s or "toast" in val_s or ("check" in val_s and "up" in val_s):
+                        col_check_popup = c
                     elif "initial" in val_s or "before" in val_s or ("start" in val_s and "pain" in val_s):
                         col_initial = c
                     elif "final" in val_s or "after" in val_s or ("end" in val_s and "pain" in val_s):
@@ -1171,6 +1198,8 @@ def load_excel_iterations(excel_path=None):
             c2 = sheet.cell(r_idx, col_dates).value
             c3 = sheet.cell(r_idx, col_len).value
             c4 = sheet.cell(r_idx, col_skip).value if (col_skip and sheet.max_column >= col_skip) else None
+            c_close = sheet.cell(r_idx, col_close_app).value if (col_close_app and sheet.max_column >= col_close_app) else None
+            c_popup = sheet.cell(r_idx, col_check_popup).value if (col_check_popup and sheet.max_column >= col_check_popup) else None
             c5 = sheet.cell(r_idx, col_initial).value if (col_initial and sheet.max_column >= col_initial) else None
             c6 = sheet.cell(r_idx, col_final).value if (col_final and sheet.max_column >= col_final) else None
 
@@ -1193,6 +1222,14 @@ def load_excel_iterations(excel_path=None):
                 skip_session = True  # Default to skip if column is blank
             else:
                 skip_session = True
+
+            # Parse close the app after My Cycle page flag (YES / No)
+            close_raw = str(c_close).strip().upper() if c_close is not None else ""
+            close_app = (close_raw in ("YES", "TRUE", "1", "Y") or "YES" in close_raw)
+
+            # Parse check pop up flag ("Yes" / "NO" - controls the 4 new popups)
+            popup_raw = str(c_popup).strip().upper() if c_popup is not None else ""
+            check_popups = (popup_raw in ("YES", "TRUE", "1", "Y") or "YES" in popup_raw)
 
             # Parse Initial and Final Pain Scores (default: initial=7, final=2):
             def _parse_score(val, default):
@@ -1217,6 +1254,8 @@ def load_excel_iterations(excel_path=None):
                 "cycles": parsed_cycles,
                 "cycle_length": cycle_len,
                 "skip_session": skip_session,
+                "close_app": close_app,
+                "check_popups": check_popups,
                 "initial_pain_score": init_pain,
                 "final_pain_score": final_pain
             })
@@ -2129,12 +2168,22 @@ def extract_home_cycle_metrics(driver):
 
 
 
-def _handle_start_session_connect_popup(driver, timeout=10):
+def _handle_start_session_connect_popup(driver, timeout=10, check_popup=None):
     """
     TEST CASE: 'Connect your Curapod M' modal popup
     Taps 'Start Session', waits for the Connect modal, screenshots it, taps 'Ok'.
     PASS -- popup appeared. FAIL -- popup missing.
     """
+    if check_popup is None:
+        check_popup = CHECK_POPUPS
+    if not check_popup:
+        print("  [SKIP] 'Connect your Curapod M' popup check skipped (Excel check pop up: No).")
+        CURRENT_RUN_DATA["outputs"]["start_session_connect_popup"] = {
+            "status": "SKIPPED",
+            "detail": "Skipped per Excel configuration (check pop up: No)."
+        }
+        return True
+
     print("\n" + "=" * 75)
     print("  TEST CASE: Start Session -> 'Connect your Curapod M' Popup")
     print("=" * 75)
@@ -3841,7 +3890,9 @@ def logout_curapod(driver):
         return False
 
 
-def delete_account(driver):
+def delete_account(driver, check_popup=None):
+    if check_popup is None:
+        check_popup = CHECK_POPUPS
     """
     OnePlus-calibrated: Scrolls down Profile screen, taps 'Delete account',
     types 'DELETE', hides soft keyboard, and confirms deletion, returning to welcome screen.
@@ -4014,16 +4065,23 @@ def delete_account(driver):
             timeout=8,
         )
     if reset_ok:
-        # ---------- TEST CASE: 'Your account was successfully deleted.' toast ----------
-        print("  [TEST CASE] Checking for 'Your account was successfully deleted.' toast...")
-        capture_toast_popup(
-            driver,
-            key="account_deleted_toast",
-            text_patterns=["successfully deleted", "account was successfully", "account deleted"],
-            screenshot_name="account_deleted_toast",
-            label="Your account was successfully deleted.",
-            timeout=6,
-        )
+        if check_popup:
+            # ---------- TEST CASE: 'Your account was successfully deleted.' toast ----------
+            print("  [TEST CASE] Checking for 'Your account was successfully deleted.' toast...")
+            capture_toast_popup(
+                driver,
+                key="account_deleted_toast",
+                text_patterns=["successfully deleted", "account was successfully", "account deleted"],
+                screenshot_name="account_deleted_toast",
+                label="Your account was successfully deleted.",
+                timeout=6,
+            )
+        else:
+            print("  [SKIP] 'Your account was successfully deleted.' toast check skipped (Excel check pop up: No).")
+            CURRENT_RUN_DATA["outputs"]["account_deleted_toast"] = {
+                "status": "SKIPPED",
+                "detail": "Skipped per Excel configuration (check pop up: No)."
+            }
         print("  SUCCESS: Account deleted and returned to Welcome screen.")
         return True
     else:
@@ -4037,10 +4095,10 @@ def run_single_test_iteration(driver, iteration_data=None):
     """
     Executes a single test iteration.
     If iteration_data is provided (from Excel), inputs and flags are configured accordingly:
-      - num_cycles, cycle_length, cycles list, skip_session
+      - num_cycles, cycle_length, cycles list, skip_session, close_app, check_popups
     Otherwise, inputs fallback to environment variables or interactive console prompts.
     """
-    global SKIP_PAIN_SESSION, PROMPTED_SKIP_PAIN
+    global SKIP_PAIN_SESSION, PROMPTED_SKIP_PAIN, CHECK_POPUPS
     CONVERSION_ISSUES.clear()
 
     if iteration_data:
@@ -4051,9 +4109,11 @@ def run_single_test_iteration(driver, iteration_data=None):
         skip_session = iteration_data.get("skip_session", False)
         init_pain = iteration_data.get("initial_pain_score", 7)
         final_pain = iteration_data.get("final_pain_score", 2)
+        check_popups = iteration_data.get("check_popups", False)
+        CHECK_POPUPS = check_popups
 
         print("\n" + "=" * 80)
-        print(f"  [EXCEL ITERATION #{iter_num}] Cycles: {num_cycles} | Length: {cl} days | Session: {'SKIP' if skip_session else 'RUN (Initial: ' + str(init_pain) + ', Final: ' + str(final_pain) + ')'}")
+        print(f"  [EXCEL ITERATION #{iter_num}] Cycles: {num_cycles} | Length: {cl} days | Session: {'SKIP' if skip_session else 'RUN (Initial: ' + str(init_pain) + ', Final: ' + str(final_pain) + ')'} | 4 Popups: {'YES (Check)' if check_popups else 'NO (Skip)'}")
         print(f"  Dates: {iteration_data.get('raw_dates')}")
         print("=" * 80)
 
@@ -4071,6 +4131,7 @@ def run_single_test_iteration(driver, iteration_data=None):
             "cycles": cycles
         }
     else:
+        check_popups = CHECK_POPUPS
         CURRENT_RUN_DATA["inputs"] = {
             "profile_name": TEST_NAME,
             "birth_year": TEST_BIRTH_YEAR,
@@ -4086,8 +4147,8 @@ def run_single_test_iteration(driver, iteration_data=None):
 
     try:
         login_with_google(driver)
-        accept_terms_and_privacy(driver)
-        tap_skip_then_continues(driver)
+        accept_terms_and_privacy(driver, check_popup=check_popups)
+        tap_skip_then_continues(driver, check_popup=check_popups)
 
         about_you_name_screen(driver)
         about_you_birth_year_screen(driver)
@@ -4111,7 +4172,14 @@ def run_single_test_iteration(driver, iteration_data=None):
         handle_period_started_popup(driver, iteration_data=iteration_data, timeout=12)
 
         verify_dashboard_screen(driver)
-        _handle_start_session_connect_popup(driver)
+        if check_popups:
+            _handle_start_session_connect_popup(driver, check_popup=True)
+        else:
+            print("  [SKIP] 'Connect your Curapod M' popup check skipped (Excel check pop up: No).")
+            CURRENT_RUN_DATA["outputs"]["start_session_connect_popup"] = {
+                "status": "SKIPPED",
+                "detail": "Skipped per Excel configuration (check pop up: No)."
+            }
 
         # ---------- TEST CASE: 'pain score' ----------
         if not iteration_data:
@@ -4150,7 +4218,7 @@ def run_single_test_iteration(driver, iteration_data=None):
 
         # Navigate to Profile and delete account to reset app state for subsequent runs
         go_to_profile(driver)
-        delete_account(driver)
+        delete_account(driver, check_popup=check_popups)
 
         # Run parallel multi-algorithm comparison (Ours vs Algo1 vs Algo2)
         try:
@@ -4222,7 +4290,7 @@ def run_single_test_iteration(driver, iteration_data=None):
         # Try to clean up account to avoid leaving app in dirty state
         try:
             go_to_profile(driver)
-            delete_account(driver)
+            delete_account(driver, check_popup=False)
         except Exception:
             pass
         raise

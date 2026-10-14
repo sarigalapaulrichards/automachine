@@ -1882,6 +1882,21 @@ function loadRunDetails(run) {{
     `;
   }}
 
+  // 4 Popups Test Cases (Login, Account Created, Connect Curapod M, Account Deleted)
+  [
+    {{ key: 'login_success_toast', label: 'Login Successful Toast' }},
+    {{ key: 'account_created_toast', label: 'Account Created Toast' }},
+    {{ key: 'start_session_connect_popup', label: 'Connect Curapod M Popup' }},
+    {{ key: 'account_deleted_toast', label: 'Account Deleted Toast' }}
+  ].forEach(t => {{
+    const item = run.output_data && run.output_data[t.key];
+    if (item) {{
+      const st = item.status || 'PASS';
+      const col = (st === 'PASS') ? 'var(--green-text)' : ((st === 'SKIPPED') ? 'var(--ink-3)' : 'var(--red)');
+      outList.innerHTML += `<div class="data-row"><span class="label">${{t.label}}</span><span class="val" style="color: ${{col}}; font-weight: 700;">${{st}}</span></div>`;
+    }}
+  }});
+
   const ss = run.screenshots || {{}};
   const calMonths = (run.calendar_months && run.calendar_months.length === 4) ? run.calendar_months : (function() {{
     const today = new Date();
@@ -2367,6 +2382,78 @@ function loadRunDetails(run) {{
       <div class="screenshot-card-footer">
         • <strong>Lifecycle Step:</strong> Re-navigated to My Cycle after relaunch.<br>
         • <strong>Persistence:</strong> Verified dynamic cycle metrics & 4 calendar months.
+      </div>
+    </div>
+    ` : ''}}
+
+    ${{ss.login_success_toast ? `
+    <!-- Popup 1: Login Successful Toast Proof -->
+    <div class="screenshot-card" style="border: 2px solid #16a34a;">
+      <div class="screenshot-card-header" style="background: #f0fdf4;">
+        <span class="title">Login Successful! (Toast Proof)</span>
+        <span class="meta" style="background: #dcfce7; color: #15803d; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Toast Detected</span>
+      </div>
+      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.login_success_toast}}')">
+        <img src="${{ss.login_success_toast}}" alt="Login Successful Toast Proof">
+      </div>
+      <div class="screenshot-card-footer">
+        • <strong>Toast:</strong> "Login Successful!" transient popup.<br>
+        • <strong>Location:</strong> Terms & Privacy screen after Google login.<br>
+        • <strong>Status:</strong> PASS (Captured instantly).
+      </div>
+    </div>
+    ` : ''}}
+
+    ${{ss.account_created_toast ? `
+    <!-- Popup 2: Account Created Toast Proof -->
+    <div class="screenshot-card" style="border: 2px solid #16a34a;">
+      <div class="screenshot-card-header" style="background: #f0fdf4;">
+        <span class="title">Account Created (Toast Proof)</span>
+        <span class="meta" style="background: #dcfce7; color: #15803d; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Toast Detected</span>
+      </div>
+      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.account_created_toast}}')">
+        <img src="${{ss.account_created_toast}}" alt="Account Created Toast Proof">
+      </div>
+      <div class="screenshot-card-footer">
+        • <strong>Toast:</strong> "Account created successfully!" popup.<br>
+        • <strong>Location:</strong> Connect your Curapod-M screen.<br>
+        • <strong>Status:</strong> PASS (Captured instantly).
+      </div>
+    </div>
+    ` : ''}}
+
+    ${{ss.start_session_connect_popup ? `
+    <!-- Popup 3: Connect your Curapod M Dialog Proof -->
+    <div class="screenshot-card" style="border: 2px solid #2563eb;">
+      <div class="screenshot-card-header" style="background: #eff6ff;">
+        <span class="title">Connect your Curapod M (Modal Proof)</span>
+        <span class="meta" style="background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Modal Detected</span>
+      </div>
+      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.start_session_connect_popup}}')">
+        <img src="${{ss.start_session_connect_popup}}" alt="Connect your Curapod M Modal Proof">
+      </div>
+      <div class="screenshot-card-footer">
+        • <strong>Modal:</strong> "Connect your Curapod M" popup dialog.<br>
+        • <strong>Trigger:</strong> Tapped 'Start Session' on Home Dashboard.<br>
+        • <strong>Action:</strong> Proof recorded; dismissed with 'Ok'.
+      </div>
+    </div>
+    ` : ''}}
+
+    ${{ss.account_deleted_toast ? `
+    <!-- Popup 4: Account Deleted Toast Proof -->
+    <div class="screenshot-card" style="border: 2px solid #dc2626;">
+      <div class="screenshot-card-header" style="background: #fef2f2;">
+        <span class="title">Account Deleted (Toast Proof)</span>
+        <span class="meta" style="background: #fee2e2; color: #991b1b; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Toast Detected</span>
+      </div>
+      <div class="screenshot-img-wrap" onclick="openZoom('${{ss.account_deleted_toast}}')">
+        <img src="${{ss.account_deleted_toast}}" alt="Account Deleted Toast Proof">
+      </div>
+      <div class="screenshot-card-footer">
+        • <strong>Toast:</strong> "Your account was successfully deleted." popup.<br>
+        • <strong>Location:</strong> Welcome screen post-account deletion.<br>
+        • <strong>Status:</strong> PASS (Captured instantly).
       </div>
     </div>
     ` : ''}}

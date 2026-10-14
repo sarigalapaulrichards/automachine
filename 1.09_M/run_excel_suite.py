@@ -52,19 +52,19 @@ def load_excel_iterations(excel_path=EXCEL_PATH):
 
 
 # Dataset specified by user prompt:
-# count | dates | cycle_length | status | close the app after the My Cycle page
+# count | dates | cycle_length | status | close the app after the My Cycle page | check pop up
 USER_SPECIFIED_DATASET = [
-    {"iteration_num": 1, "row_index": 1, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 15, "skip_session": True, "close_app": True},
-    {"iteration_num": 2, "row_index": 2, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 16, "skip_session": True, "close_app": False},
-    {"iteration_num": 3, "row_index": 3, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 17, "skip_session": True, "close_app": True},
-    {"iteration_num": 4, "row_index": 4, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 18, "skip_session": True, "close_app": True},
-    {"iteration_num": 5, "row_index": 5, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 19, "skip_session": True, "close_app": True},
-    {"iteration_num": 6, "row_index": 6, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 20, "skip_session": True, "close_app": True},
-    {"iteration_num": 7, "row_index": 7, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 21, "skip_session": True, "close_app": True},
-    {"iteration_num": 8, "row_index": 8, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 22, "skip_session": True, "close_app": True},
-    {"iteration_num": 9, "row_index": 9, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 23, "skip_session": True, "close_app": False},
-    {"iteration_num": 10, "row_index": 10, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 24, "skip_session": True, "close_app": False},
-    {"iteration_num": 11, "row_index": 11, "num_cycles": 1, "raw_dates": "Jul 13th 5days", "cycles": [{"month": "Jul 2026", "start_day": "13", "end_day": "17", "days_count": 5}], "cycle_length": 25, "skip_session": True, "close_app": False},
+    {"iteration_num": 1, "row_index": 1, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 15, "skip_session": True, "close_app": True, "check_popups": True},
+    {"iteration_num": 2, "row_index": 2, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 16, "skip_session": True, "close_app": True, "check_popups": True},
+    {"iteration_num": 3, "row_index": 3, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 17, "skip_session": True, "close_app": True, "check_popups": False},
+    {"iteration_num": 4, "row_index": 4, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 18, "skip_session": True, "close_app": True, "check_popups": False},
+    {"iteration_num": 5, "row_index": 5, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 19, "skip_session": True, "close_app": True, "check_popups": False},
+    {"iteration_num": 6, "row_index": 6, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 20, "skip_session": True, "close_app": True, "check_popups": False},
+    {"iteration_num": 7, "row_index": 7, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 21, "skip_session": True, "close_app": True, "check_popups": False},
+    {"iteration_num": 8, "row_index": 8, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 22, "skip_session": True, "close_app": True, "check_popups": False},
+    {"iteration_num": 9, "row_index": 9, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 23, "skip_session": True, "close_app": True, "check_popups": False},
+    {"iteration_num": 10, "row_index": 10, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 24, "skip_session": True, "close_app": True, "check_popups": False},
+    {"iteration_num": 11, "row_index": 11, "num_cycles": 1, "raw_dates": "Jul 15th 5days", "cycles": [{"month": "Jul 2026", "start_day": "15", "end_day": "19", "days_count": 5}], "cycle_length": 25, "skip_session": True, "close_app": True, "check_popups": False},
 ]
 
 
@@ -100,8 +100,11 @@ def run_single_iteration(driver, iteration_data):
     cycles = iteration_data["cycles"]
     skip_session = iteration_data["skip_session"]
 
+    is_check_popup = bool(iteration_data.get("check_popups", False))
+    tpt.CHECK_POPUPS = is_check_popup
+
     print("\n" + "=" * 80)
-    print(f"  EXECUTING EXCEL ITERATION #{iter_idx} (Cycles: {num_cycles}, Length: {cl} days, Skip Session: {skip_session})")
+    print(f"  EXECUTING EXCEL ITERATION #{iter_idx} (Cycles: {num_cycles}, Length: {cl} days, Skip Session: {skip_session}, 4 Popups: {'YES' if is_check_popup else 'NO'})")
     print(f"  Dates: {iteration_data['raw_dates']}")
     print("=" * 80)
 
@@ -125,8 +128,8 @@ def run_single_iteration(driver, iteration_data):
     try:
         # 1. Onboarding flow
         tpt.login_with_google(driver)
-        tpt.accept_terms_and_privacy(driver)
-        tpt.tap_skip_then_continues(driver)
+        tpt.accept_terms_and_privacy(driver, check_popup=is_check_popup)
+        tpt.tap_skip_then_continues(driver, check_popup=is_check_popup)
 
         tpt.about_you_name_screen(driver)
         tpt.about_you_birth_year_screen(driver)
@@ -147,6 +150,14 @@ def run_single_iteration(driver, iteration_data):
 
         # 3. Home Dashboard verification & extract Home metrics
         tpt.verify_dashboard_screen(driver)
+        if is_check_popup:
+            tpt._handle_start_session_connect_popup(driver, check_popup=True)
+        else:
+            print("  [SKIP] 'Connect your Curapod M' popup check skipped (Excel check pop up: No).")
+            tpt.CURRENT_RUN_DATA["outputs"]["start_session_connect_popup"] = {
+                "status": "SKIPPED",
+                "detail": "Skipped per Excel configuration (check pop up: No)."
+            }
 
         # 4. Bluetooth pod connection and pain score test case OR skip
         is_close_app = bool(iteration_data.get("close_app"))
@@ -194,7 +205,7 @@ def run_single_iteration(driver, iteration_data):
         # 6. Reset for next iteration: navigate to Profile and delete account
         # (Photo step excluded as requested by user)
         tpt.go_to_profile(driver)
-        tpt.delete_account(driver)
+        tpt.delete_account(driver, check_popup=is_check_popup)
 
         # 6. Multi-Algorithm Parallel Verification
         first_res = run_first_algo(
