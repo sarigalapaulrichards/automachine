@@ -21,6 +21,7 @@ from Algo1 import (
     compare_metrics,
     run_algo1,
     run_parallel_cycle_algorithm,
+    is_today_in_period_or_predicted,
 )
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "compare_metrics",
     "run_algo1",
     "run_parallel_cycle_algorithm",
+    "is_today_in_period_or_predicted",
 ]
 
 if __name__ == "__main__":

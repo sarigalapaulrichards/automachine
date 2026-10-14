@@ -343,6 +343,63 @@ def run_algo1(input_data: Dict[str, Any], app_output_data: Dict[str, Any], today
     }
 
 
+def is_today_in_period_or_predicted(cycles, entered_cl=28, today=None) -> bool:
+    """
+    Determines if 'today' is currently within a logged period OR within/around a predicted period.
+    Used for verifying whether the 'Has your period started?' modal popup is expected.
+    """
+    if today is None:
+        today = date.today()
+    elif isinstance(today, str):
+        today = parse_date(today) or date.today()
+    elif isinstance(today, datetime):
+        today = today.date()
+
+    periods: List[Period] = []
+    for c in cycles or []:
+        s_d, p_len = parse_period_input(c, default_year=2026)
+        if s_d and p_len:
+            periods.append(Period(s_d, s_d + timedelta(days=p_len - 1)))
+
+    if not periods:
+        return False
+
+    periods.sort(key=lambda p: p.start)
+
+    # 1. Is today within any logged bleeding days?
+    for p in periods:
+        if p.start <= today <= p.end:
+            return True
+
+    # 2. Check predicted periods forward
+    entered_L = int(entered_cl or 28)
+    exp = expected(periods, entered_L, today)
+
+    d1 = periods[-1].start
+    L = exp.cycle_length
+    avg_p_len = round_half_up(sum((p.end - p.start).days + 1 for p in periods) / len(periods))
+
+    k = 1
+    while True:
+        pred_start = d1 + timedelta(days=k * L)
+        pred_end = pred_start + timedelta(days=avg_p_len - 1)
+        if (pred_start - timedelta(days=2)) <= today <= (pred_end + timedelta(days=2)):
+            return True
+        if pred_start > today + timedelta(days=L):
+            break
+        k += 1
+        if k > 60:
+            break
+
+    if abs((today - exp.est_next).days) <= 2:
+        return True
+
+    if exp.phase == "Menstruation" or exp.projected_phase == "Menstruation":
+        return True
+
+    return False
+
+
 # Backwards compatibility alias
 run_parallel_cycle_algorithm = run_algo1
 

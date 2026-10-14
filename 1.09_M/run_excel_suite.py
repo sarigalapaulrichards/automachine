@@ -142,6 +142,9 @@ def run_single_iteration(driver, iteration_data):
         tpt.cycle_pain_pattern_screen(driver)
         tpt.cycle_shapes_screen(driver)
 
+        # TEST CASE: 'Has your period started?' popup
+        tpt.handle_period_started_popup(driver, iteration_data=iteration_data, timeout=12)
+
         # 3. Home Dashboard verification & extract Home metrics
         tpt.verify_dashboard_screen(driver)
 

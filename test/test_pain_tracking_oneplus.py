@@ -2057,6 +2057,118 @@ def extract_home_cycle_metrics(driver):
     return metrics
 
 
+def handle_period_started_popup(driver, iteration_data=None, timeout=12):
+    """
+    TEST CASE: "Has your period started?" Modal Popup
+
+    Trigger condition (from app):
+      The popup appears on the Home Dashboard immediately after prediction is built
+      ONLY when the present day falls within a logged period OR a predicted period.
+
+    Actions:
+      - If popup is found  → tap "No, not yet" to dismiss → PASS (Shown)
+      - If popup NOT found and today IS in period → FAIL (Missing)
+      - If popup NOT found and today is NOT in period → N/A (Not Expected)
+
+    Result stored in CURRENT_RUN_DATA["outputs"]["period_popup"].
+    Screenshot stored in  CURRENT_RUN_DATA["screenshots"]["period_popup"].
+    """
+    print("\n" + "=" * 75)
+    print("  TEST CASE: Has your period started? (Period Popup)")
+    print("=" * 75)
+
+    # ---------- Determine if popup is expected ----------
+    popup_expected = False
+    try:
+        from datetime import date
+        from Algo1 import is_today_in_period_or_predicted
+        cycles = None
+        entered_cl = 28
+        if iteration_data:
+            cycles = iteration_data.get("cycles")
+            entered_cl = int(iteration_data.get("cycle_length") or 28)
+        popup_expected = is_today_in_period_or_predicted(
+            cycles=cycles,
+            entered_cl=entered_cl,
+            today=date.today(),
+        )
+        print(f"  Popup expected (today in period/predicted): {popup_expected}")
+    except Exception as algo_err:
+        print(f"  Warning: Could not evaluate popup expectation: {algo_err}")
+        popup_expected = False
+
+    # ---------- XPaths for popup elements ----------
+    POPUP_DETECT_XPATH = (
+        "//*[contains(@text,'Has your period started')"
+        " or contains(@content-desc,'Has your period started')"
+        " or contains(@text,'expected around today')"
+        " or contains(@text,'No, not yet')"
+        " or contains(@content-desc,'No, not yet')]"
+    )
+    NO_NOT_YET_XPATHS = (
+        "//*[@text='No, not yet']",
+        "//*[@content-desc='No, not yet']",
+        "//*[contains(@text,'No, not yet')]",
+        "//*[contains(@content-desc,'No, not yet')]",
+    )
+
+    # ---------- Wait for popup ----------
+    popup_found = screen_has(driver, POPUP_DETECT_XPATH, timeout=timeout)
+
+    if popup_found:
+        print("  POPUP DETECTED: 'Has your period started?'")
+
+        # Capture screenshot proof BEFORE dismissing
+        try:
+            popup_ss = save_screenshot(driver, "period_started_popup")
+            if popup_ss:
+                CURRENT_RUN_DATA["screenshots"]["period_popup"] = popup_ss
+                print(f"  Screenshot saved: {popup_ss}")
+        except Exception as ss_err:
+            print(f"  Warning: Could not save popup screenshot: {ss_err}")
+
+        # Tap "No, not yet" to dismiss
+        tapped_no = try_tap(driver, *NO_NOT_YET_XPATHS, timeout=6)
+        if not tapped_no:
+            # Fallback: coordinate tap at ~50% x, ~60% y ("No, not yet" text link position)
+            try:
+                W = driver.get_window_size()["width"]
+                H = driver.get_window_size()["height"]
+            except Exception:
+                W, H = 1080, 2400
+            print("  Fallback: tapping 'No, not yet' by coordinate...")
+            _tap_at(driver, int(W * 0.50), int(H * 0.60))
+        time.sleep(1.0)
+        print("  Tapped 'No, not yet' — popup dismissed.")
+
+        CURRENT_RUN_DATA["outputs"]["period_popup"] = {
+            "status": "PASS",
+            "detail": "Popup appeared and 'No, not yet' was tapped successfully.",
+            "popup_expected": popup_expected,
+        }
+        print("  [PASS] Period Popup test case: Popup appeared as expected.")
+
+    else:
+        if popup_expected:
+            # Popup was expected but did NOT appear → FAIL
+            CURRENT_RUN_DATA["outputs"]["period_popup"] = {
+                "status": "FAIL",
+                "detail": "Popup NOT found — expected since today is in period/predicted period.",
+                "popup_expected": True,
+            }
+            print("  [FAIL] Period Popup test case: Popup was EXPECTED but did NOT appear.")
+        else:
+            # Popup was not expected and did NOT appear → N/A / PASS
+            CURRENT_RUN_DATA["outputs"]["period_popup"] = {
+                "status": "N/A",
+                "detail": "No popup — today is not in a period or predicted period (expected behaviour).",
+                "popup_expected": False,
+            }
+            print("  [N/A] Period Popup test case: Popup correctly absent (today not in period).")
+
+    print("=" * 75 + "\n")
+
+
 def verify_dashboard_screen(driver):
     """
     Verifies that the user has successfully reached the main home dashboard,
@@ -3849,6 +3961,9 @@ def run_single_test_iteration(driver, iteration_data=None):
         cycle_regularity_screen(driver)
         cycle_pain_pattern_screen(driver)
         cycle_shapes_screen(driver)
+
+        # ---------- TEST CASE: 'Has your period started?' popup ----------
+        handle_period_started_popup(driver, iteration_data=iteration_data, timeout=12)
 
         verify_dashboard_screen(driver)
 

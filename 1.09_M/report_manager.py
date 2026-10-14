@@ -219,7 +219,8 @@ def record_test_run(status="PASSED", input_data=None, output_data=None, screensh
         ("initial_pain", ["initial_pain_score.png", "after_pain_set.png", "initial_pain.png"]),
         ("final_pain", ["final_pain_score.png", "after_feel_score.png", "final_pain.png"]),
         ("session_card", ["session_card.png", "pain_session_card.png", "cycle_scrolled_live.png"]),
-        ("home", ["live_home.png", "home_screen.png"])
+        ("home", ["live_home.png", "home_screen.png"]),
+        ("period_popup", ["period_started_popup.png", "has_period_started_popup.png", "period_popup.png"])
     ])
 
     for key, fallbacks in screenshot_targets:
