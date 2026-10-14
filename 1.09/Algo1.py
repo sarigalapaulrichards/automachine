@@ -339,7 +339,14 @@ def run_algo1(input_data: Dict[str, Any], app_output_data: Dict[str, Any], today
         "algo_metrics": algo_metrics,
         "field_comparisons": comparisons,
         "mismatch_count": mismatch_count,
-        "expected_object": exp,
+        "expected_object": {
+            "state": exp.state,
+            "last_period": str(exp.last_period),
+            "est_next": str(exp.est_next),
+            "cycle_length": exp.cycle_length,
+            "cycle_day": exp.cycle_day,
+            "phase": exp.phase
+        } if exp else None,
     }
 
 

@@ -64,8 +64,18 @@ def load_history():
     return []
 
 def save_history(history):
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=2)
+    temp_file = HISTORY_FILE + ".tmp"
+    with open(temp_file, "w", encoding="utf-8") as f:
+        json.dump(history, f, indent=2, default=str)
+    if os.path.exists(HISTORY_FILE):
+        try:
+            os.replace(temp_file, HISTORY_FILE)
+        except Exception:
+            shutil.copy2(temp_file, HISTORY_FILE)
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+    else:
+        os.rename(temp_file, HISTORY_FILE)
 
 def clear_history(backup=True):
     """
