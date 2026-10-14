@@ -400,13 +400,72 @@ def login_with_google(driver):
     return True
 
 
+def capture_toast_popup(driver, key, text_patterns, screenshot_name, label, timeout=5):
+    """
+    Generic fast-poll helper to detect and capture a transient toast / popup.
+    Polls every 0.25 s up to `timeout` seconds for any element matching `text_patterns`.
+    Takes a screenshot immediately upon detection (before the toast disappears).
+    """
+    xpath_parts = " or ".join(
+        [f"contains(@text,'{p}') or contains(@content-desc,'{p}')" for p in text_patterns]
+    )
+    xpath = f"//*[{xpath_parts}]"
+
+    found = False
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            els = driver.find_elements(AppiumBy.XPATH, xpath)
+            if els:
+                found = True
+                break
+        except Exception:
+            pass
+        time.sleep(0.25)
+
+    print(f"  Toast/Popup [{label}]: {'DETECTED' if found else 'NOT FOUND'} (waited up to {timeout}s)")
+
+    if found:
+        try:
+            ss = save_screenshot(driver, screenshot_name)
+            if ss:
+                CURRENT_RUN_DATA["screenshots"][key] = ss
+                print(f"  Screenshot saved: {ss}")
+        except Exception as ss_err:
+            print(f"  Warning: screenshot failed: {ss_err}")
+        CURRENT_RUN_DATA["outputs"][key] = {
+            "status": "PASS",
+            "detail": f"'{label}' toast/popup appeared as expected.",
+        }
+        print(f"  [PASS] {label}")
+    else:
+        CURRENT_RUN_DATA["outputs"][key] = {
+            "status": "FAIL",
+            "detail": f"'{label}' toast/popup did NOT appear.",
+        }
+        print(f"  [FAIL] {label} -- toast was not detected.")
+
+    return found
+
+
 def accept_terms_and_privacy(driver):
     print("Step: Terms & Privacy (this screen can be slow to load)...")
     if not screen_has(driver, "//*[contains(@text,'Terms')]", timeout=30):
         print("  Terms & Privacy screen never appeared.")
         return False
 
-    time.sleep(2)
+    # ---------- TEST CASE: 'Login Successful!' toast ----------
+    print("\n  [TEST CASE] Checking for 'Login Successful!' toast...")
+    capture_toast_popup(
+        driver,
+        key="login_success_toast",
+        text_patterns=["Login Successful", "Login successful", "Logged in"],
+        screenshot_name="login_successful_toast",
+        label="Login Successful!",
+        timeout=6,
+    )
+
+    time.sleep(1)  # reduced from 2 -- we already spent time polling above
 
     size = driver.get_window_size()
     W = size["width"]
@@ -514,6 +573,18 @@ def skip_pod_pairing_screen(driver):
     it completes cleanly.
     """
     print("Step: 'Connect your Curapod-M' pod-pairing screen...")
+
+    # ---------- TEST CASE: 'Account created successfully!' toast ----------
+    print("  [TEST CASE] Checking for 'Account created successfully!' toast...")
+    capture_toast_popup(
+        driver,
+        key="account_created_toast",
+        text_patterns=["Account created successfully", "account created", "created successfully"],
+        screenshot_name="account_created_toast",
+        label="Account created successfully!",
+        timeout=8,
+    )
+
     for _ in range(12):
         if screen_has(driver, "//*[contains(@text,'Connect your Curapod')]", timeout=1):
             print("  Pod-pairing screen visible -- tapping Skip...")
@@ -2055,6 +2126,70 @@ def extract_home_cycle_metrics(driver):
 
     print(f"  [Home Dashboard Metrics] CYCLE_TRACKING: '{metrics['CYCLE_TRACKING']}', LAST_PERIOD: '{metrics['LAST_PERIOD']}', EST_NEXT: '{metrics['EST_NEXT']}', AVG_CYCLE: '{metrics['AVG_CYCLE']}', YOU_ARE_IN: '{metrics['YOU_ARE_IN']}'", flush=True)
     return metrics
+
+
+
+def _handle_start_session_connect_popup(driver, timeout=10):
+    """
+    TEST CASE: 'Connect your Curapod M' modal popup
+    Taps 'Start Session', waits for the Connect modal, screenshots it, taps 'Ok'.
+    PASS -- popup appeared. FAIL -- popup missing.
+    """
+    print("\n" + "=" * 75)
+    print("  TEST CASE: Start Session -> 'Connect your Curapod M' Popup")
+    print("=" * 75)
+    size = driver.get_window_size()
+    W, H = size["width"], size["height"]
+    print("  Tapping 'Start Session' to trigger Connect popup...")
+    tapped = try_tap(
+        driver,
+        "//*[@content-desc='Start Session']",
+        "//*[@text='Start Session']",
+        "//*[contains(@text,'Start Session')]",
+        timeout=8,
+    )
+    if not tapped:
+        _tap_at(driver, int(W * 0.77), int(H * 0.585))
+    time.sleep(1.5)
+    POPUP_XPATH = (
+        "//*[contains(@text,'Connect your Curapod M')"
+        " or contains(@content-desc,'Connect your Curapod M')"
+        " or contains(@text,'No device is connected')"
+        " or contains(@content-desc,'No device is connected')"
+        " or contains(@text,'Please connect your curapod')]"
+    )
+    popup_found = screen_has(driver, POPUP_XPATH, timeout=timeout)
+    if popup_found:
+        print("  POPUP DETECTED: 'Connect your Curapod M'")
+        try:
+            ss = save_screenshot(driver, "start_session_connect_popup")
+            if ss:
+                CURRENT_RUN_DATA["screenshots"]["start_session_connect_popup"] = ss
+                print(f"  Screenshot saved: {ss}")
+        except Exception as ss_err:
+            print(f"  Warning: screenshot failed: {ss_err}")
+        ok_tapped = try_tap(
+            driver,
+            "//*[@text='Ok']", "//*[@text='OK']", "//*[@text='ok']",
+            "//*[@content-desc='Ok']", "//*[contains(@text,'Ok')]",
+            timeout=6,
+        )
+        if not ok_tapped:
+            _tap_at(driver, int(W * 0.50), int(H * 0.70))
+        time.sleep(1.0)
+        print("  Tapped 'Ok' -- popup dismissed.")
+        CURRENT_RUN_DATA["outputs"]["start_session_connect_popup"] = {
+            "status": "PASS",
+            "detail": "'Connect your Curapod M' popup appeared and 'Ok' was tapped.",
+        }
+        print("  [PASS] Start Session Connect popup test case.")
+    else:
+        CURRENT_RUN_DATA["outputs"]["start_session_connect_popup"] = {
+            "status": "FAIL",
+            "detail": "'Connect your Curapod M' popup did NOT appear after tapping Start Session.",
+        }
+        print("  [FAIL] Start Session Connect popup did NOT appear.")
+    print("=" * 75 + "\n")
 
 
 def handle_period_started_popup(driver, iteration_data=None, timeout=12):
@@ -3879,6 +4014,16 @@ def delete_account(driver):
             timeout=8,
         )
     if reset_ok:
+        # ---------- TEST CASE: 'Your account was successfully deleted.' toast ----------
+        print("  [TEST CASE] Checking for 'Your account was successfully deleted.' toast...")
+        capture_toast_popup(
+            driver,
+            key="account_deleted_toast",
+            text_patterns=["successfully deleted", "account was successfully", "account deleted"],
+            screenshot_name="account_deleted_toast",
+            label="Your account was successfully deleted.",
+            timeout=6,
+        )
         print("  SUCCESS: Account deleted and returned to Welcome screen.")
         return True
     else:
@@ -3966,6 +4111,7 @@ def run_single_test_iteration(driver, iteration_data=None):
         handle_period_started_popup(driver, iteration_data=iteration_data, timeout=12)
 
         verify_dashboard_screen(driver)
+        _handle_start_session_connect_popup(driver)
 
         # ---------- TEST CASE: 'pain score' ----------
         if not iteration_data:

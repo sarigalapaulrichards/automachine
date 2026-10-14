@@ -220,7 +220,11 @@ def record_test_run(status="PASSED", input_data=None, output_data=None, screensh
         ("final_pain", ["final_pain_score.png", "after_feel_score.png", "final_pain.png"]),
         ("session_card", ["session_card.png", "pain_session_card.png", "cycle_scrolled_live.png"]),
         ("home", ["live_home.png", "home_screen.png"]),
-        ("period_popup", ["period_started_popup.png", "has_period_started_popup.png", "period_popup.png"])
+        ("period_popup", ["period_started_popup.png", "has_period_started_popup.png", "period_popup.png"]),
+        ("login_success_toast", ["login_successful_toast.png", "login_success_toast.png"]),
+        ("account_created_toast", ["account_created_toast.png", "account_created_successfully_toast.png"]),
+        ("start_session_connect_popup", ["start_session_connect_popup.png", "connect_curapod_m_popup.png"]),
+        ("account_deleted_toast", ["account_deleted_toast.png", "account_deleted_successfully_toast.png"])
     ])
 
     for key, fallbacks in screenshot_targets:
