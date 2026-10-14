@@ -1972,27 +1972,34 @@ def cycle_regularity_screen(driver, choice=CYCLE_REGULARITY):
 
 def cycle_pain_pattern_screen(driver, onset=CYCLE_PAIN_ONSET, intensity=CYCLE_PAIN_INTENSITY):
     """
-    Handles the combined "Your Cycle" screen with two question groups:
-      - "When does it usually start?"
+    Handles the "Your Cycle" pain pattern screen with two questions:
+      - "When pain usually starts?" / "When does it usually start?"
           A day or two before my period / The first day of my period /
           A few hours after my period begins / It varies a lot /
           I rarely get period pain
-      - "How intense does it usually get?"
+      - "How intense does it usually get?" (appears dynamically after question 1)
           Mild / Moderate / Severe / It varies cycle to cycle
     Both selections live on the same screen above one shared Continue button.
     """
     print("Step: Your Cycle -- pain onset & intensity (two questions)...")
-    if not screen_has(driver, "//*[contains(@text,'When does it usually start') or contains(@text,'usually get')]", timeout=15):
+    if not screen_has(
+        driver,
+        "//*[contains(@text,'pain usually start') or contains(@text,'When does it usually start') or contains(@text,'usually get') or contains(@text,'first day of my period') or contains(@content-desc,'first day of my period') or contains(@text,'period pain')]",
+        timeout=15
+    ):
         print("  Pain-pattern screen not found.")
         return False
 
     size = driver.get_window_size()
     W, H = size["width"], size["height"]
 
-    # Question 1: When does it usually start?
+    # Question 1: When pain usually starts?
+    print(f"  Selecting pain onset: '{onset}'...")
     tapped_onset = try_tap(
         driver,
         f"//*[@content-desc='{onset}']",
+        f"//*[contains(@content-desc,'{onset}')]",
+        f"//*[@text='{onset}']",
         f"//*[contains(@text,'{onset}')]",
         "//*[@content-desc='A day or two before my period']",
         "//*[contains(@text,'day or two before')]",
@@ -2000,25 +2007,51 @@ def cycle_pain_pattern_screen(driver, onset=CYCLE_PAIN_ONSET, intensity=CYCLE_PA
     )
     if not tapped_onset:
         _tap_at(driver, int(W * 0.50), int(H * 0.236))
-    time.sleep(0.8)
+    time.sleep(1.2)
 
     # Question 2: How intense does it usually get?
+    # Appears dynamically after question 1 is selected
+    print(f"  Selecting pain intensity: '{intensity}'...")
     tapped_intensity = try_tap(
         driver,
-        f"//*[contains(@content-desc,'{intensity}')]",
+        f"//*[starts-with(@content-desc,'{intensity}') or contains(@content-desc,'{intensity}')]",
         f"//*[@text='{intensity}']",
         f"//*[contains(@text,'{intensity}')]",
+        "//*[contains(@content-desc,'Mild')]",
+        "//*[@text='Mild']",
         timeout=8
     )
+    if not tapped_intensity:
+        # If not visible, scroll down slightly inside the ScrollView
+        try:
+            _swipe(driver, int(W * 0.50), int(H * 0.70), int(W * 0.50), int(H * 0.45), duration=400)
+            time.sleep(0.8)
+            tapped_intensity = try_tap(
+                driver,
+                f"//*[starts-with(@content-desc,'{intensity}') or contains(@content-desc,'{intensity}')]",
+                f"//*[@text='{intensity}']",
+                f"//*[contains(@text,'{intensity}')]",
+                timeout=6
+            )
+        except Exception:
+            pass
+
     if not tapped_intensity:
         _tap_at(driver, int(W * 0.50), int(H * 0.665))
     time.sleep(0.8)
 
     # Tap Continue (enabled once both are answered)
-    tapped_c = try_tap(driver, "//*[@content-desc='Continue']", "//*[@text='Continue']", timeout=8)
+    print("  Tapping Continue on pain pattern screen...")
+    tapped_c = try_tap(
+        driver,
+        "//*[@content-desc='Continue' and @enabled='true']",
+        "//*[@content-desc='Continue']",
+        "//*[@text='Continue']",
+        timeout=8
+    )
     if not tapped_c:
         _tap_at(driver, int(W * 0.50), DEV_PROFILE.bottom_action_y())
-    time.sleep(1.8)
+    time.sleep(2.0)
     return True
 
 
