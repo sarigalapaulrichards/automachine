@@ -1947,6 +1947,15 @@ def cycle_regularity_screen(driver, choice=CYCLE_REGULARITY):
     "Irregular".
     """
     print(f"Step: Your Cycle -- regularity ('{choice}')...")
+    # Hide keyboard if open so cards and Continue button are not obstructed
+    try:
+        driver.hide_keyboard()
+    except Exception:
+        try:
+            driver.press_keycode(4)
+        except Exception:
+            pass
+
     if not screen_has(driver, "//*[contains(@text,'How regular are your periods') or contains(@text,'regular are your periods')]", timeout=15):
         print("  Regularity screen not found.")
         return False
