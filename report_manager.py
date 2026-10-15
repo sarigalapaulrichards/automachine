@@ -930,6 +930,40 @@ def generate_html_report(history=None):
     border-radius: 8px;
     background: #fff;
   }}
+  /* COLLAPSIBLE PRESENT RUNS LEDGER */
+  .runs-ledger-header {{
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease;
+  }}
+  .runs-ledger-header:hover {{
+    background: #f1f5f9;
+  }}
+  .filter-chip {{
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    border-radius: 999px;
+    border: 1px solid var(--line-2);
+    background: #ffffff;
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }}
+  .filter-chip:hover {{
+    background: #f1f3f5;
+    color: var(--ink);
+  }}
+  .filter-chip.active {{
+    background: var(--accent);
+    color: #ffffff;
+    border-color: var(--accent);
+  }}
   table.excel-table {{
     width: 100%;
     border-collapse: collapse;
@@ -1267,64 +1301,102 @@ def generate_html_report(history=None):
     </div>
   </div>
 
-  <!-- EXCEL SPREADSHEET TABLE SECTION -->
-  <section class="panel">
-    <div class="excel-toolbar">
-      <div>
-        <h2>Test Execution Ledger (Click Any Row To Open Details)</h2>
-        <div class="muted small">All test runs are stored here like an Excel sheet. Click any row to load its input/output data, parallel algorithm verification, and calendar screenshots.</div>
+  <!-- ALL PRESENT RUNS LEDGER (COLLAPSIBLE SINGLE UNIT) -->
+  <section class="panel" id="runsLedgerPanel" style="padding: 0; overflow: hidden; border: 1.5px solid #d0d7de; box-shadow: 0 2px 10px rgba(0,0,0,0.04); margin-bottom: 20px;">
+    <!-- Collapsible Header: Click to Open / Close -->
+    <div class="runs-ledger-header" onclick="toggleRunsLedger()" style="padding: 16px 20px; background: linear-gradient(180deg, #ffffff 0%, #f6f8fa 100%); display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 38px; height: 38px; border-radius: 8px; background: #eaf1fb; border: 1px solid #c2e7ff; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #174ea6;">
+          📂
+        </div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <h2 style="margin: 0; font-size: 16px; font-weight: 700; color: var(--ink);">All Present Test Runs (<span id="ledgerRunsCount">0</span> Runs)</h2>
+            <span style="background: #e6f4ea; color: #137333; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1px solid #ceead6;">Completed Runs Only</span>
+          </div>
+          <div class="muted small" style="margin-top: 3px;">
+            Click to <span id="toggleActionWord">expand</span> and view all present runs ledger (RUN-001 to <span id="ledgerLastRun">RUN-113</span>). Only present runs, not upcoming runs.
+          </div>
+        </div>
       </div>
-      <div style="display: flex; gap: 8px; align-items: center;">
-        <input type="text" id="searchBox" placeholder="Search runs..." oninput="filterTable()" style="width: 200px;">
-        <button class="clean-btn" onclick="openCleanModal()" style="padding: 5px 10px; font-size: 12px;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-          Clean Data
+      
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button id="toggleLedgerBtn" class="primary" style="padding: 7px 16px; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; border-radius: 6px; cursor: pointer; pointer-events: none;">
+          <span id="toggleLedgerBtnText">Open All Runs</span>
+          <span id="toggleLedgerArrow" style="display: inline-block; transition: transform 0.25s ease; font-size: 11px;">▼</span>
         </button>
       </div>
     </div>
 
-    <div class="excel-table-container">
-      <table class="excel-table" id="excelTable">
-        <thead>
-          <tr>
-            <th style="width: 30px;">#</th>
-            <th>Run ID</th>
-            <th>Date & Time</th>
-            <th style="background: #eaf1fb; color: #174ea6; font-weight: 700;">Present Date</th>
-            <th>Test Status</th>
-            <th>Algo1 (CM-191)</th>
-            <th>Algo2 (Second)</th>
-            <th>Algo1 vs Algo2</th>
-            <th>Pain Score</th>
-            <th style="background: #ecfdf5; color: #065f46; font-weight: 700;">App Persistence</th>
-            <th>Cycles Configured</th>
-            <th>Length In</th>
-            <th>PREVIOUS PERIOD</th>
-            <th>YOU ARE IN</th>
-            <th>NEXT PERIOD</th>
-            <th>AVG CYCLE</th>
-            <th>AVG PERIOD</th>
-            <th>Current Phase</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="excelTableBody">
-          <!-- Populated by JavaScript -->
-        </tbody>
-      </table>
+    <!-- Collapsible Body: Only opens when clicked -->
+    <div id="runsLedgerBody" style="display: none; border-top: 1px solid var(--line);">
+      <div class="excel-toolbar" style="padding: 12px 18px; background: #fff; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <input type="text" id="searchBox" placeholder="Search present runs (e.g. RUN-102, Oct 15, PASS)..." oninput="filterTable()" style="width: 260px; padding: 5px 10px; font-size: 12.5px; border-radius: 6px; border: 1px solid var(--line-2);">
+          <button class="filter-chip active" id="chipAll" onclick="setRunsFilter('all')">All Present (<span id="countAllPresent">0</span>)</button>
+          <button class="filter-chip" id="chipToday" onclick="setRunsFilter('today')">Today's Runs (<span id="countTodayPresent">0</span>)</button>
+          <button class="filter-chip" id="chipPass" onclick="setRunsFilter('pass')">Pass Only</button>
+          <button class="filter-chip" id="chipFail" onclick="setRunsFilter('fail')">Fail Only</button>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button class="clean-btn" onclick="openCleanModal()" style="padding: 5px 10px; font-size: 12px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            Clean Data
+          </button>
+        </div>
+      </div>
+
+      <div class="excel-table-container" style="max-height: 480px; overflow-y: auto;">
+        <table class="excel-table" id="excelTable">
+          <thead>
+            <tr>
+              <th style="width: 30px;">#</th>
+              <th>Run ID</th>
+              <th>Date & Time</th>
+              <th style="background: #eaf1fb; color: #174ea6; font-weight: 700;">Present Date</th>
+              <th>Test Status</th>
+              <th>Algo1 (CM-191)</th>
+              <th>Algo2 (Second)</th>
+              <th>Algo1 vs Algo2</th>
+              <th>Pain Score</th>
+              <th style="background: #ecfdf5; color: #065f46; font-weight: 700;">App Persistence</th>
+              <th>Cycles Configured</th>
+              <th>Length In</th>
+              <th>PREVIOUS PERIOD</th>
+              <th>YOU ARE IN</th>
+              <th>NEXT PERIOD</th>
+              <th>AVG CYCLE</th>
+              <th>AVG PERIOD</th>
+              <th>Current Phase</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="excelTableBody">
+            <!-- Populated by JavaScript -->
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>
 
   <!-- ACTIVE RUN BANNER -->
   <div class="active-run-banner" id="activeRunBanner">
-    <div class="title">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-      Viewing Run Details: <span id="activeRunTitle">RUN-001</span>
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <div class="title" style="margin: 0;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+        Viewing Present Run: <span id="activeRunTitle">RUN-113</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <label for="quickRunSelector" style="font-size: 12px; font-weight: 600; color: var(--ink-2);">Switch Run:</label>
+        <select id="quickRunSelector" onchange="selectRun(parseInt(this.value))" style="padding: 4px 10px; font-size: 12.5px; font-weight: 600; border-radius: 6px; border: 1px solid var(--line-2); background: #ffffff; color: var(--accent); cursor: pointer;">
+          <!-- Populated by JavaScript -->
+        </select>
+      </div>
     </div>
     <div style="display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--ink-2); flex-wrap: wrap;">
-      <span id="activeRunTimestamp">Executed: 2026-09-21 10:58:30</span>
+      <span id="activeRunTimestamp">Executed: 2026-10-15 13:40:00</span>
       <span style="display: inline-flex; align-items: center; gap: 5px; background: #eaf1fb; color: #174ea6; font-weight: 700; padding: 2px 10px; border-radius: 4px; border: 1px solid #c2e7ff;">
-        📅 Evaluation Present Date: <span id="activeRunPresentDate">2026-09-21</span>
+        📅 Evaluation Present Date: <span id="activeRunPresentDate">2026-10-15</span>
       </span>
     </div>
   </div>
@@ -1676,19 +1748,98 @@ function openZoom(src) {{
   document.getElementById('modalZoom').classList.add('active');
 }}
 
+let isLedgerOpen = false;
+let currentFilterType = 'all';
+
+function toggleRunsLedger() {{
+  isLedgerOpen = !isLedgerOpen;
+  const body = document.getElementById('runsLedgerBody');
+  const btnText = document.getElementById('toggleLedgerBtnText');
+  const arrow = document.getElementById('toggleLedgerArrow');
+  const actionWord = document.getElementById('toggleActionWord');
+  
+  if (isLedgerOpen) {{
+    if (body) body.style.display = 'block';
+    if (btnText) btnText.textContent = 'Close Runs Ledger';
+    if (arrow) arrow.style.transform = 'rotate(180deg)';
+    if (actionWord) actionWord.textContent = 'collapse';
+  }} else {{
+    if (body) body.style.display = 'none';
+    if (btnText) btnText.textContent = 'Open All Runs';
+    if (arrow) arrow.style.transform = 'rotate(0deg)';
+    if (actionWord) actionWord.textContent = 'expand';
+  }}
+}}
+
+function setRunsFilter(filterType) {{
+  currentFilterType = filterType;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  const activeChip = document.getElementById(
+    filterType === 'all' ? 'chipAll' : 
+    (filterType === 'today' ? 'chipToday' : 
+    (filterType === 'pass' ? 'chipPass' : 'chipFail'))
+  );
+  if (activeChip) activeChip.classList.add('active');
+  filterTable();
+}}
+
+function updateQuickRunSelector() {{
+  const sel = document.getElementById('quickRunSelector');
+  if (!sel) return;
+  sel.innerHTML = '';
+  
+  // Render options in reverse chronological order (latest present run first)
+  for (let i = RUN_HISTORY.length - 1; i >= 0; i--) {{
+    const r = RUN_HISTORY[i];
+    const pD = r.present_date || (r.timestamp ? r.timestamp.split(' ')[0] : '');
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `${{r.run_id}} (${{pD}}) - ${{r.status}}`;
+    if (i === currentRunIndex) opt.selected = true;
+    sel.appendChild(opt);
+  }}
+}}
+
+function filterTable() {{
+  const txt = (document.getElementById('searchBox') ? document.getElementById('searchBox').value : '');
+  renderTable(txt);
+}}
+
 function renderTable(filterText = '') {{
   const tbody = document.getElementById('excelTableBody');
   tbody.innerHTML = '';
-  document.getElementById('totalRunsCount').textContent = RUN_HISTORY.length;
+  const totalCount = RUN_HISTORY.length;
+  
+  // Update header badges and counters
+  if (document.getElementById('totalRunsCount')) document.getElementById('totalRunsCount').textContent = totalCount;
+  if (document.getElementById('ledgerRunsCount')) document.getElementById('ledgerRunsCount').textContent = totalCount;
+  if (document.getElementById('countAllPresent')) document.getElementById('countAllPresent').textContent = totalCount;
+  if (document.getElementById('ledgerLastRun') && totalCount > 0) {{
+    document.getElementById('ledgerLastRun').textContent = RUN_HISTORY[totalCount - 1].run_id;
+  }}
 
-  if (RUN_HISTORY.length === 0) {{
-    tbody.innerHTML = '<tr><td colspan="18" style="text-align: center; padding: 36px 16px; color: var(--ink-3); font-size: 13.5px;"><strong>No test runs in memory (Data Cleaned).</strong><br><span style="font-size: 12px; margin-top: 6px; display: inline-block;">Click "Restore Full History" in the toolbar above if you wish to restore previous runs.</span></td></tr>';
+  // Count today's runs (latest present date in history)
+  const latestDate = totalCount > 0 ? (RUN_HISTORY[totalCount - 1].present_date || (RUN_HISTORY[totalCount - 1].timestamp ? RUN_HISTORY[totalCount - 1].timestamp.split(' ')[0] : '')) : '';
+  const todayCount = RUN_HISTORY.filter(r => (r.present_date || (r.timestamp ? r.timestamp.split(' ')[0] : '')) === latestDate).length;
+  if (document.getElementById('countTodayPresent')) document.getElementById('countTodayPresent').textContent = todayCount;
+
+  updateQuickRunSelector();
+
+  if (totalCount === 0) {{
+    tbody.innerHTML = '<tr><td colspan="19" style="text-align: center; padding: 36px 16px; color: var(--ink-3); font-size: 13.5px;"><strong>No test runs in memory (Data Cleaned).</strong><br><span style="font-size: 12px; margin-top: 6px; display: inline-block;">Click "Restore Full History" in the toolbar above if you wish to restore previous runs.</span></td></tr>';
     return;
   }}
 
   RUN_HISTORY.forEach((run, idx) => {{
-    const cyclesStr = (run.input_data.cycles || []).map(c => typeof c === 'string' ? c : `${{c.month}} ${{c.start_day}}-${{c.end_day || (parseInt(c.start_day)+parseInt(c.days_count||5)-1)}}`).join(', ') || '3 cycles';
     const isPass = (run.status || '').toUpperCase().includes('PASS');
+    const pDate = run.present_date || (run.timestamp ? run.timestamp.split(' ')[0] : '–');
+    
+    // Filter chip logic
+    if (currentFilterType === 'today' && pDate !== latestDate) return;
+    if (currentFilterType === 'pass' && !isPass) return;
+    if (currentFilterType === 'fail' && isPass) return;
+
+    const cyclesStr = (run.input_data.cycles || []).map(c => typeof c === 'string' ? c : `${{c.month}} ${{c.start_day}}-${{c.end_day || (parseInt(c.start_day)+parseInt(c.days_count||5)-1)}}`).join(', ') || '3 cycles';
     const firstPass = (run.first_algo_comparison && run.first_algo_comparison.overall_status === 'PASS');
     const secondPass = (run.second_algo_comparison && run.second_algo_comparison.overall_status === 'PASS');
     const match1v2 = (run.three_way_comparison && run.three_way_comparison.first_vs_second_status === 'PASS');
@@ -1712,7 +1863,6 @@ function renderTable(filterText = '') {{
     }}
 
     const prevPeriodStr = getPreviousPeriod(run);
-    const pDate = run.present_date || (run.timestamp ? run.timestamp.split(' ')[0] : '–');
     const rowText = `${{run.run_id}} ${{run.timestamp}} ${{pDate}} ${{run.status}} ${{cyclesStr}} ${{prevPeriodStr}} ${{run.output_data.YOU_ARE_IN || ''}}`.toLowerCase();
     if (filterText && !rowText.includes(filterText.toLowerCase())) return;
 
@@ -1750,17 +1900,17 @@ function renderTable(filterText = '') {{
   }});
 }}
 
-function filterTable() {{
-  const txt = document.getElementById('searchBox').value;
-  renderTable(txt);
-}}
-
 function selectRun(idx) {{
   currentRunIndex = idx;
   const rows = document.querySelectorAll('#excelTableBody tr');
   rows.forEach(r => r.classList.remove('active-row'));
   const targetRow = document.getElementById(`row-${{idx}}`);
   if (targetRow) targetRow.classList.add('active-row');
+
+  const sel = document.getElementById('quickRunSelector');
+  if (sel && sel.value !== String(idx)) {{
+    sel.value = idx;
+  }}
 
   loadRunDetails(RUN_HISTORY[idx]);
 }}
